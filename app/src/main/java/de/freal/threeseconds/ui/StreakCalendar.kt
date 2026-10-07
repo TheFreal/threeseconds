@@ -105,18 +105,12 @@ private fun StreakHeader(state: HomeState) {
             modifier = Modifier.size(28.dp),
         )
         Spacer(Modifier.size(6.dp))
-        Column(Modifier.weight(1f)) {
-            Text(
-                if (state.streak.current == 1) "1 day streak" else "${state.streak.current} day streak",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-            )
-            Text(
-                if (state.streak.recordedToday) "Today is in the bag." else "Today is still open.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+        Text(
+            if (state.streak.current == 1) "1 day streak" else "${state.streak.current} day streak",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.weight(1f),
+        )
         if (state.streak.longest > state.streak.current) {
             Text(
                 "Best ${state.streak.longest}",

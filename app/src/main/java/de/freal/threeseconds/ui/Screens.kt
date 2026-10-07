@@ -145,9 +145,15 @@ private fun TodayScreen(
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
+        TodayHeadline(state, cameraGranted)
+
         StreakCalendarCard(state, firstMonth, onDayClick = { selectedDay = it })
 
-        GlassesCard(state, cameraGranted, onConnectGlasses, onGrantCamera)
+        // Once set up, the glasses' state lives in the headline's subtitle; the card only
+        // remains while there is something to do.
+        if (!state.isRegistered || !cameraGranted) {
+            GlassesCard(state, cameraGranted, onConnectGlasses, onGrantCamera)
+        }
 
         if (state.isRegistered && cameraGranted) {
             Button(
@@ -167,6 +173,37 @@ private fun TodayScreen(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+    }
+}
+
+@Composable
+private fun TodayHeadline(state: HomeState, cameraGranted: Boolean) {
+    Column(Modifier.padding(horizontal = 4.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(
+            if (state.streak.recordedToday) "Today is in the bag." else "Today is still open.",
+            style = MaterialTheme.typography.headlineSmall,
+        )
+        val g = state.glasses
+        val name = g.name ?: "Your glasses"
+        val (ok, line) = when {
+            !state.isRegistered -> false to "Glasses not linked to 3S yet"
+            !cameraGranted -> false to "Camera access on the glasses not allowed yet"
+            !g.connected -> false to "$name: not connected"
+            !g.worn -> false to "$name: connected, not being worn"
+            else -> true to "$name: connected and being worn"
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier.size(8.dp).clip(CircleShape)
+                    .background(if (ok) Color(0xFF6BD68A) else Color(0xFF6E6E78))
+            )
+            Spacer(Modifier.size(8.dp))
+            Text(
+                line + (g.batteryLevel?.takeIf { g.connected }?.let { "  ·  $it%" } ?: ""),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 
