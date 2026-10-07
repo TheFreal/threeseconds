@@ -7,6 +7,7 @@ import android.util.Log
 import de.freal.threeseconds.container
 import de.freal.threeseconds.data.AppSettings
 import de.freal.threeseconds.data.AttemptOutcome
+import de.freal.threeseconds.data.AttemptText
 import de.freal.threeseconds.data.DayLog
 import de.freal.threeseconds.data.DayStatus
 import de.freal.threeseconds.data.computeStreak
@@ -82,7 +83,7 @@ class DailyTriggerReceiver : BroadcastReceiver() {
         val glasses = GlassesManager.sampleStatus()
         if (!glasses.worn) {
             Log.i(TAG, "Glasses are not on (connected=${glasses.connected}); re-rolling")
-            val why = if (glasses.connected) "Glasses connected but not worn" else "Glasses not connected"
+            val why = if (glasses.connected) AttemptText.NOT_WORN else AttemptText.NOT_CONNECTED
             // Resolve before re-rolling: arming the next moment closes any row still pending.
             log.resolve(id, AttemptOutcome.NOT_WORN, why)
             if (!container.scheduler.rerollWithinToday()) {
@@ -113,7 +114,7 @@ class DailyTriggerReceiver : BroadcastReceiver() {
         if (blocked != null) {
             container.attempts.resolve(id, AttemptOutcome.BLOCKED, blocked)
         } else {
-            val dnd = if (Notifications.doNotDisturbOn(app)) "Do Not Disturb was on. " else ""
+            val dnd = if (Notifications.doNotDisturbOn(app)) AttemptText.DND_PREFIX else ""
             container.attempts.resolve(
                 id, AttemptOutcome.PROMPTED, "${dnd}Countdown ${AppSettings.COUNTDOWN_MS / 1000}s",
             )

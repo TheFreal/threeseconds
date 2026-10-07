@@ -24,6 +24,9 @@ interface ClipDao {
     @Query("SELECT DISTINCT substr(day, 1, 7) AS m FROM clips ORDER BY m DESC")
     fun observeMonths(): Flow<List<String>>
 
+    @Query("SELECT * FROM clips WHERE day = :day ORDER BY recordedAt ASC")
+    suspend fun forDay(day: String): List<Clip>
+
     @Query("SELECT COUNT(*) FROM clips WHERE day = :day")
     suspend fun countForDay(day: String): Int
 

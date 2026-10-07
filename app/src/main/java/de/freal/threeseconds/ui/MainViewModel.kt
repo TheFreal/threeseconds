@@ -10,9 +10,13 @@ import de.freal.threeseconds.container
 import de.freal.threeseconds.data.AppSettings
 import de.freal.threeseconds.data.Attempt
 import de.freal.threeseconds.data.Clip
+import de.freal.threeseconds.data.DayFacts
 import de.freal.threeseconds.data.DayLog
+import de.freal.threeseconds.data.DayStory
 import de.freal.threeseconds.data.StreakInfo
 import de.freal.threeseconds.data.computeStreak
+import de.freal.threeseconds.data.describeDay
+import de.freal.threeseconds.data.key
 import de.freal.threeseconds.glasses.GlassesManager
 import de.freal.threeseconds.glasses.GlassesStatus
 import de.freal.threeseconds.montage.MontageBuilder
@@ -27,6 +31,9 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.io.File
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
 
 data class HomeState(
     val settings: AppSettings = AppSettings(),
@@ -34,6 +41,8 @@ data class HomeState(
     val registration: RegistrationState = RegistrationState.UNAVAILABLE,
     val streak: StreakInfo = StreakInfo(0, 0, false),
     val clips: List<Clip> = emptyList(),
+    val dayLogs: Map<String, DayLog> = emptyMap(),
+    val clipsByDay: Map<String, List<Clip>> = emptyMap(),
 ) {
     val isRegistered: Boolean get() = registration == RegistrationState.REGISTERED
 }
@@ -75,6 +84,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             registration = registration,
             streak = computeStreak(dayLogs),
             clips = clips,
+            dayLogs = dayLogs.associateBy { it.day },
+            clipsByDay = clips.groupBy { it.day }.mapValues { (_, c) -> c.sortedBy { it.recordedAt } },
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeState())
 
@@ -86,6 +97,34 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     val recentAttempts: StateFlow<List<Attempt>> = container.database.attempts().observeRecent(20)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** The calendar starts here; earlier days are "before 3S". */
+    val installDay: LocalDate? = runCatching {
+        @Suppress("DEPRECATION")
+        val installed = app.packageManager.getPackageInfo(app.packageName, 0).firstInstallTime
+        Instant.ofEpochMilli(installed).atZone(ZoneId.systemDefault()).toLocalDate()
+    }.getOrNull()
+
+    /** Gathers what is known about [date] and puts it into words for the calendar. */
+    suspend fun storyFor(date: LocalDate): DayStory {
+        val zone = ZoneId.systemDefault()
+        val from = date.atStartOfDay(zone).toInstant().toEpochMilli()
+        val to = date.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli()
+        val settings = container.settings.current()
+        return describeDay(
+            DayFacts(
+                date = date,
+                today = LocalDate.now(),
+                log = container.database.days().forDay(date.key()),
+                clips = container.database.clips().forDay(date.key()),
+                attempts = container.database.attempts().between(from, to),
+                trackingSince = installDay,
+                promptsEnabled = settings.enabled,
+                nextPromptAt = settings.scheduledAtMillis.takeIf { it > System.currentTimeMillis() },
+                zone = zone,
+            )
+        )
+    }
 
     private val _debugChecks = MutableStateFlow<DebugChecks?>(null)
     val debugChecks: StateFlow<DebugChecks?> = _debugChecks.asStateFlow()

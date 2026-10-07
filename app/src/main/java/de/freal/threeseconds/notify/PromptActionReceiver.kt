@@ -6,6 +6,7 @@ import android.content.Intent
 import android.util.Log
 import de.freal.threeseconds.container
 import de.freal.threeseconds.data.AppSettings
+import de.freal.threeseconds.data.AttemptText
 import de.freal.threeseconds.data.DayLog
 import de.freal.threeseconds.data.DayStatus
 import de.freal.threeseconds.data.key
@@ -45,7 +46,8 @@ class PromptActionReceiver : BroadcastReceiver() {
                 }
 
                 container.attempts.respondToOpenPrompt(
-                    "Snoozed ${AppSettings.SNOOZE_MINUTES}m ($used/${AppSettings.MAX_SNOOZES})"
+                    AttemptText.SNOOZED_PREFIX +
+                        "${AppSettings.SNOOZE_MINUTES}m ($used/${AppSettings.MAX_SNOOZES})"
                 )
 
                 container.scheduler.cancelPromptExpiry()

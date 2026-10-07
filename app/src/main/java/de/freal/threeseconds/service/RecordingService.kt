@@ -8,6 +8,7 @@ import android.util.Log
 import androidx.core.content.ContextCompat
 import com.meta.wearable.dat.camera.types.VideoQuality
 import de.freal.threeseconds.container
+import de.freal.threeseconds.data.AttemptText
 import de.freal.threeseconds.data.Clip
 import de.freal.threeseconds.data.DayLog
 import de.freal.threeseconds.data.DayStatus
@@ -142,7 +143,7 @@ class RecordingService : Service() {
      */
     private suspend fun finishWithFailure(reason: String, attemptId: Long?) {
         val container = applicationContext.container
-        attemptId?.let { container.attempts.respond(it, "Record tapped, capture failed: $reason") }
+        attemptId?.let { container.attempts.respond(it, AttemptText.CAPTURE_FAILED_PREFIX + reason) }
         val day = LocalDate.now().key()
 
         val existing = container.database.days().forDay(day)

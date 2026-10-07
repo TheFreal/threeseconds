@@ -29,6 +29,18 @@ data class Attempt(
     val response: String? = null,
 )
 
+/**
+ * Fixed wording for details and responses that [describeDay] reads back. Everything
+ * else in those columns is free text for the debug screen.
+ */
+object AttemptText {
+    const val NOT_WORN = "Glasses connected but not worn"
+    const val NOT_CONNECTED = "Glasses not connected"
+    const val DND_PREFIX = "Do Not Disturb was on. "
+    const val CAPTURE_FAILED_PREFIX = "Record tapped, capture failed: "
+    const val SNOOZED_PREFIX = "Snoozed "
+}
+
 enum class AttemptKind(val label: String) {
     FIRST("First attempt"),
     RETRY("Retry"),
@@ -80,6 +92,9 @@ interface AttemptDao {
             "ORDER BY id DESC LIMIT 1"
     )
     suspend fun openPrompt(): Attempt?
+
+    @Query("SELECT * FROM attempts WHERE scheduledAt >= :from AND scheduledAt < :to ORDER BY scheduledAt")
+    suspend fun between(from: Long, to: Long): List<Attempt>
 
     @Query("SELECT * FROM attempts WHERE outcome = 'PENDING' ORDER BY scheduledAt DESC LIMIT 1")
     fun observeNext(): Flow<Attempt?>

@@ -51,15 +51,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import coil.decode.VideoFrameDecoder
 import coil.request.ImageRequest
 import de.freal.threeseconds.data.AppSettings
 import de.freal.threeseconds.data.Clip
+import java.time.LocalDate
 import java.time.LocalTime
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
@@ -110,7 +109,7 @@ fun AppScaffold(
                 .fillMaxSize()
         ) {
             when (tab) {
-                Tab.Today -> TodayScreen(state, cameraGranted, onConnectGlasses, onGrantCamera, viewModel::recordNow)
+                Tab.Today -> TodayScreen(state, viewModel, cameraGranted, onConnectGlasses, onGrantCamera)
                 Tab.Clips -> ClipsScreen(state.clips)
                 Tab.Montage -> MontageScreen(viewModel)
                 Tab.Settings -> SettingsScreen(state.settings, viewModel)
@@ -123,11 +122,22 @@ fun AppScaffold(
 @Composable
 private fun TodayScreen(
     state: HomeState,
+    viewModel: MainViewModel,
     cameraGranted: Boolean,
     onConnectGlasses: () -> Unit,
     onGrantCamera: () -> Unit,
-    onRecordNow: () -> Unit,
 ) {
+    var selectedDay by remember { mutableStateOf<LocalDate?>(null) }
+    selectedDay?.let { DayDetail(it, state, viewModel, onDismiss = { selectedDay = null }) }
+
+    // Never page back past the first month that has anything to show.
+    val firstMonth = listOfNotNull(
+        viewModel.installDay,
+        state.dayLogs.keys.minOrNull()?.let(LocalDate::parse),
+        state.clipsByDay.keys.minOrNull()?.let(LocalDate::parse),
+        LocalDate.now(),
+    ).min().let(YearMonth::from)
+
     Column(
         Modifier
             .fillMaxSize()
@@ -135,13 +145,13 @@ private fun TodayScreen(
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        StreakCard(state)
+        StreakCalendarCard(state, firstMonth, onDayClick = { selectedDay = it })
 
         GlassesCard(state, cameraGranted, onConnectGlasses, onGrantCamera)
 
         if (state.isRegistered && cameraGranted) {
             Button(
-                onClick = onRecordNow,
+                onClick = viewModel::recordNow,
                 modifier = Modifier.fillMaxWidth().height(56.dp),
                 enabled = state.glasses.available,
             ) {
@@ -157,35 +167,6 @@ private fun TodayScreen(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-    }
-}
-
-@Composable
-private fun StreakCard(state: HomeState) {
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(20.dp)) {
-            Text(
-                "${state.streak.current}",
-                fontSize = 64.sp,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary,
-            )
-            Text(
-                if (state.streak.current == 1) "day streak" else "day streak",
-                style = MaterialTheme.typography.titleMedium,
-            )
-            Spacer(Modifier.height(8.dp))
-            Text(
-                buildString {
-                    append(if (state.streak.recordedToday) "Today is in the bag." else "Today is still open.")
-                    if (state.streak.longest > state.streak.current) {
-                        append("  Best so far: ${state.streak.longest} days.")
-                    }
-                },
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
     }
 }
 
@@ -257,7 +238,7 @@ private fun ClipsScreen(clips: List<Clip>) {
     }
 
     var playing by remember { mutableStateOf<Clip?>(null) }
-    playing?.let { ClipPlayerDialog(it, onDismiss = { playing = null }) }
+    playing?.let { ClipPlayerDialog(listOf(it), onDismiss = { playing = null }) }
 
     LazyVerticalGrid(
         columns = GridCells.Adaptive(110.dp),
