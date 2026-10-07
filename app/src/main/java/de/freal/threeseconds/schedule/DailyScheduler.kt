@@ -7,6 +7,7 @@ import android.content.Intent
 import android.os.Build
 import android.util.Log
 import de.freal.threeseconds.data.AppSettings
+import de.freal.threeseconds.data.AttemptKind
 import de.freal.threeseconds.data.SettingsRepository
 import de.freal.threeseconds.data.key
 import java.time.LocalDate
@@ -25,6 +26,7 @@ import kotlin.random.Random
 class DailyScheduler(
     private val context: Context,
     private val settings: SettingsRepository,
+    private val attemptLog: AttemptLog,
 ) {
 
     private val alarmManager = context.getSystemService(AlarmManager::class.java)
@@ -37,6 +39,7 @@ class DailyScheduler(
         val current = settings.current()
         if (!current.enabled) {
             cancel()
+            attemptLog.cancelled()
             return
         }
 
@@ -52,6 +55,7 @@ class DailyScheduler(
         val target = pickMoment(current, LocalDate.now(), skipToday) ?: return
         settings.setSchedule(target.day, target.atMillis)
         arm(target.atMillis)
+        attemptLog.scheduled(AttemptKind.FIRST, target.atMillis)
         Log.i(TAG, "Daily prompt armed for ${at(target.atMillis)}")
     }
 
@@ -151,6 +155,7 @@ class DailyScheduler(
         settings.setAttemptCount(attempts)
         settings.setNextAt(next)
         arm(next)
+        attemptLog.scheduled(AttemptKind.RETRY, next)
         Log.i(TAG, "Re-rolled to ${at(next)} (attempt ${attempts + 1})")
         return true
     }
@@ -183,6 +188,7 @@ class DailyScheduler(
         val at = now() + minutes * 60_000L
         settings.setNextAt(at)
         arm(at)
+        attemptLog.scheduled(AttemptKind.SNOOZE, at)
         Log.i(TAG, "Snoozed until ${at(at)}")
     }
 
@@ -190,10 +196,13 @@ class DailyScheduler(
         alarmManager.cancel(pendingIntent())
     }
 
+    /** Without this the prompt still fires in Doze, just with the system's own slack. */
+    fun exactAlarmsAllowed(): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.S || alarmManager.canScheduleExactAlarms()
+
     private fun arm(atMillis: Long) {
         val pi = pendingIntent()
-        val canExact = Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
-            alarmManager.canScheduleExactAlarms()
+        val canExact = exactAlarmsAllowed()
         try {
             if (canExact) {
                 alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, atMillis, pi)

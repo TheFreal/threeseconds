@@ -30,7 +30,7 @@ class PromptActionReceiver : BroadcastReceiver() {
             ACTION_RECORD -> {
                 // The countdown is answered; stop it from closing the day behind us.
                 app.container.scheduler.cancelPromptExpiry()
-                RecordingService.start(app)
+                RecordingService.start(app, fromPrompt = true)
             }
 
             ACTION_SNOOZE -> goAsyncScope {
@@ -40,8 +40,13 @@ class PromptActionReceiver : BroadcastReceiver() {
 
                 if (used > AppSettings.MAX_SNOOZES) {
                     Log.w(TAG, "Snooze budget already spent")
+                    container.attempts.respondToOpenPrompt("Snooze tapped, but no snoozes were left")
                     return@goAsyncScope
                 }
+
+                container.attempts.respondToOpenPrompt(
+                    "Snoozed ${AppSettings.SNOOZE_MINUTES}m ($used/${AppSettings.MAX_SNOOZES})"
+                )
 
                 container.scheduler.cancelPromptExpiry()
                 container.settings.setSnoozeCount(used)

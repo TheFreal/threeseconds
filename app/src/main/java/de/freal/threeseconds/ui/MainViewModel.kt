@@ -1,11 +1,14 @@
 package de.freal.threeseconds.ui
 
 import android.app.Application
+import android.app.usage.UsageStatsManager
+import android.os.PowerManager
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.meta.wearable.dat.core.types.RegistrationState
 import de.freal.threeseconds.container
 import de.freal.threeseconds.data.AppSettings
+import de.freal.threeseconds.data.Attempt
 import de.freal.threeseconds.data.Clip
 import de.freal.threeseconds.data.DayLog
 import de.freal.threeseconds.data.StreakInfo
@@ -14,6 +17,7 @@ import de.freal.threeseconds.glasses.GlassesManager
 import de.freal.threeseconds.glasses.GlassesStatus
 import de.freal.threeseconds.montage.MontageBuilder
 import de.freal.threeseconds.montage.MontageResult
+import de.freal.threeseconds.notify.Notifications
 import de.freal.threeseconds.service.RecordingService
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -33,6 +37,16 @@ data class HomeState(
 ) {
     val isRegistered: Boolean get() = registration == RegistrationState.REGISTERED
 }
+
+/** System conditions that decide whether a prompt can fire and be seen. Polled, not observed. */
+data class DebugChecks(
+    val notificationsBlocked: String?,
+    val doNotDisturb: Boolean,
+    val exactAlarms: Boolean,
+    val batteryUnrestricted: Boolean,
+    val standbyBucket: Int,
+    val checkedAt: Long,
+)
 
 sealed interface MontageState {
     data object Idle : MontageState
@@ -66,6 +80,28 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     val months: StateFlow<List<String>> = container.database.clips().observeMonths()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val nextAttempt: StateFlow<Attempt?> = container.database.attempts().observeNext()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    val recentAttempts: StateFlow<List<Attempt>> = container.database.attempts().observeRecent(20)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    private val _debugChecks = MutableStateFlow<DebugChecks?>(null)
+    val debugChecks: StateFlow<DebugChecks?> = _debugChecks.asStateFlow()
+
+    fun refreshDebugChecks() {
+        val app = getApplication<Application>()
+        _debugChecks.value = DebugChecks(
+            notificationsBlocked = Notifications.promptBlockedReason(app),
+            doNotDisturb = Notifications.doNotDisturbOn(app),
+            exactAlarms = container.scheduler.exactAlarmsAllowed(),
+            batteryUnrestricted = app.getSystemService(PowerManager::class.java)
+                .isIgnoringBatteryOptimizations(app.packageName),
+            standbyBucket = app.getSystemService(UsageStatsManager::class.java).appStandbyBucket,
+            checkedAt = System.currentTimeMillis(),
+        )
+    }
 
     private val _montage = MutableStateFlow<MontageState>(MontageState.Idle)
     val montage: StateFlow<MontageState> = _montage.asStateFlow()

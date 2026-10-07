@@ -1,5 +1,6 @@
 package de.freal.threeseconds.data
 
+import androidx.room.AutoMigration
 import androidx.room.Dao
 import androidx.room.Database
 import androidx.room.Insert
@@ -49,12 +50,14 @@ interface DayLogDao {
 }
 
 @Database(
-    entities = [Clip::class, DayLog::class],
-    version = 1,
+    entities = [Clip::class, DayLog::class, Attempt::class],
+    version = 2,
     exportSchema = true,
+    autoMigrations = [AutoMigration(from = 1, to = 2)],
 )
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun clips(): ClipDao
     abstract fun days(): DayLogDao
+    abstract fun attempts(): AttemptDao
 }

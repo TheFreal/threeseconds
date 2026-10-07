@@ -52,12 +52,19 @@ class RecordingService : Service() {
             return START_NOT_STICKY
         }
 
+        val fromPrompt = intent?.getBooleanExtra(EXTRA_FROM_PROMPT, false) == true
         job = scope.launch {
+            // Ties this capture to the prompt row on the debug screen.
+            val attemptId = if (fromPrompt) {
+                applicationContext.container.attempts.respondToOpenPrompt("Record tapped")
+            } else {
+                null
+            }
             try {
-                capture()
+                capture(attemptId)
             } catch (e: Exception) {
                 Log.e(TAG, "Capture failed", e)
-                finishWithFailure(e.message ?: "Something went wrong")
+                finishWithFailure(e.message ?: "Something went wrong", attemptId)
             } finally {
                 stopSelf()
             }
@@ -65,7 +72,7 @@ class RecordingService : Service() {
         return START_NOT_STICKY
     }
 
-    private suspend fun capture() {
+    private suspend fun capture(attemptId: Long?) {
         val container = applicationContext.container
         val settings = container.settings.current()
         val recordedAt = System.currentTimeMillis()
@@ -82,7 +89,7 @@ class RecordingService : Service() {
         when (result) {
             is RecordResult.Failure -> {
                 temp.delete()
-                finishWithFailure(result.reason)
+                finishWithFailure(result.reason, attemptId)
             }
 
             is RecordResult.Success -> {
@@ -120,6 +127,11 @@ class RecordingService : Service() {
                 )
                 container.scheduler.ensureScheduled(force = true, skipToday = true)
                 Log.i(TAG, "Saved ${result.frameCount} frames / ${result.durationMs}ms to $uri")
+                attemptId?.let {
+                    container.attempts.respond(
+                        it, "Recorded ${result.durationMs}ms, ${result.frameCount} frames",
+                    )
+                }
             }
         }
     }
@@ -128,8 +140,9 @@ class RecordingService : Service() {
      * A failed capture still counts as showing up, so the day is logged as ATTEMPTED
      * and the streak survives.
      */
-    private suspend fun finishWithFailure(reason: String) {
+    private suspend fun finishWithFailure(reason: String, attemptId: Long?) {
         val container = applicationContext.container
+        attemptId?.let { container.attempts.respond(it, "Record tapped, capture failed: $reason") }
         val day = LocalDate.now().key()
 
         val existing = container.database.days().forDay(day)
@@ -159,8 +172,11 @@ class RecordingService : Service() {
     companion object {
         private const val TAG = "RecordingService"
 
-        fun start(context: Context) {
+        private const val EXTRA_FROM_PROMPT = "from_prompt"
+
+        fun start(context: Context, fromPrompt: Boolean = false) {
             val intent = Intent(context, RecordingService::class.java)
+                .putExtra(EXTRA_FROM_PROMPT, fromPrompt)
             runCatching { ContextCompat.startForegroundService(context, intent) }
                 .onFailure { Log.e(TAG, "Could not start recording service", it) }
         }

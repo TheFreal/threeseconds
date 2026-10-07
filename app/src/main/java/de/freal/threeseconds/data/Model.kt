@@ -73,6 +73,10 @@ val DayStatus.countsForStreak: Boolean
 class Converters {
     @TypeConverter fun toStatus(value: String): DayStatus = DayStatus.valueOf(value)
     @TypeConverter fun fromStatus(value: DayStatus): String = value.name
+    @TypeConverter fun toKind(value: String): AttemptKind = AttemptKind.valueOf(value)
+    @TypeConverter fun fromKind(value: AttemptKind): String = value.name
+    @TypeConverter fun toOutcome(value: String): AttemptOutcome = AttemptOutcome.valueOf(value)
+    @TypeConverter fun fromOutcome(value: AttemptOutcome): String = value.name
 }
 
 fun LocalDate.key(): String = toString()

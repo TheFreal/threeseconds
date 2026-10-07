@@ -8,6 +8,7 @@ import de.freal.threeseconds.data.SettingsRepository
 import de.freal.threeseconds.glasses.GlassesManager
 import de.freal.threeseconds.media.ClipStore
 import de.freal.threeseconds.notify.Notifications
+import de.freal.threeseconds.schedule.AttemptLog
 import de.freal.threeseconds.schedule.DailyScheduler
 
 class ThreeSecondsApp : Application() {
@@ -36,7 +37,9 @@ class AppContainer(context: Context) {
 
     val clipStore: ClipStore by lazy { ClipStore(appContext) }
 
-    val scheduler: DailyScheduler by lazy { DailyScheduler(appContext, settings) }
+    val attempts: AttemptLog by lazy { AttemptLog(database.attempts()) }
+
+    val scheduler: DailyScheduler by lazy { DailyScheduler(appContext, settings, attempts) }
 }
 
 val Context.container: AppContainer

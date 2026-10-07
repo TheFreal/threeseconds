@@ -181,6 +181,29 @@ object Notifications {
         notify(context, ID_RESULT, n)
     }
 
+    /**
+     * Why the daily prompt would not be shown right now, or null if nothing stands in
+     * its way. [notify] skips silently when notifications are off, so this is the only
+     * place that reason surfaces.
+     */
+    fun promptBlockedReason(context: Context): String? {
+        if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) {
+            return "Notifications are turned off for the app"
+        }
+        val channel = context.getSystemService(NotificationManager::class.java)
+            .getNotificationChannel(CHANNEL_PROMPT)
+            ?: return "The daily prompt channel does not exist"
+        if (channel.importance == NotificationManager.IMPORTANCE_NONE) {
+            return "The \"${channel.name}\" notification category is turned off"
+        }
+        return null
+    }
+
+    /** Do Not Disturb in any form; the prompt posts but may not buzz or bridge. */
+    fun doNotDisturbOn(context: Context): Boolean =
+        context.getSystemService(NotificationManager::class.java).currentInterruptionFilter >
+            NotificationManager.INTERRUPTION_FILTER_ALL
+
     fun notify(context: Context, id: Int, notification: Notification) {
         val manager = NotificationManagerCompat.from(context)
         if (manager.areNotificationsEnabled()) {

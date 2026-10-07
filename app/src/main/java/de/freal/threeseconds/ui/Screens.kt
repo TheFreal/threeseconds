@@ -1,6 +1,7 @@
 package de.freal.threeseconds.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -20,9 +21,11 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -61,7 +64,9 @@ import java.time.LocalTime
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 
-private enum class Tab(val label: String) { Today("Today"), Clips("Clips"), Montage("Montage"), Settings("Settings") }
+private enum class Tab(val label: String) {
+    Today("Today"), Clips("Clips"), Montage("Montage"), Settings("Settings"), Debug("Debug")
+}
 
 @Composable
 fun AppScaffold(
@@ -88,6 +93,7 @@ fun AppScaffold(
                                     Tab.Clips -> Icons.Default.PhotoLibrary
                                     Tab.Montage -> Icons.Default.Movie
                                     Tab.Settings -> Icons.Default.Settings
+                                    Tab.Debug -> Icons.Default.BugReport
                                 },
                                 contentDescription = t.label,
                             )
@@ -108,6 +114,7 @@ fun AppScaffold(
                 Tab.Clips -> ClipsScreen(state.clips)
                 Tab.Montage -> MontageScreen(viewModel)
                 Tab.Settings -> SettingsScreen(state.settings, viewModel)
+                Tab.Debug -> DebugScreen(viewModel, state.settings)
             }
         }
     }
@@ -249,23 +256,27 @@ private fun ClipsScreen(clips: List<Clip>) {
         return
     }
 
+    var playing by remember { mutableStateOf<Clip?>(null) }
+    playing?.let { ClipPlayerDialog(it, onDismiss = { playing = null }) }
+
     LazyVerticalGrid(
         columns = GridCells.Adaptive(110.dp),
         modifier = Modifier.fillMaxSize().padding(12.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        items(clips, key = { it.id }) { clip -> ClipThumb(clip) }
+        items(clips, key = { it.id }) { clip -> ClipThumb(clip, onClick = { playing = clip }) }
     }
 }
 
 @Composable
-private fun ClipThumb(clip: Clip) {
+private fun ClipThumb(clip: Clip, onClick: () -> Unit) {
     Column {
         Box(
             Modifier.fillMaxWidth().aspectRatio(9f / 16f)
                 .clip(RoundedCornerShape(10.dp))
                 .background(MaterialTheme.colorScheme.surfaceVariant)
+                .clickable(onClick = onClick)
         ) {
             AsyncImage(
                 model = ImageRequest.Builder(androidx.compose.ui.platform.LocalContext.current)
@@ -275,6 +286,17 @@ private fun ClipThumb(clip: Clip) {
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
+            )
+            Icon(
+                Icons.Default.PlayArrow,
+                contentDescription = "Play",
+                tint = Color.White,
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(Color.Black.copy(alpha = 0.4f))
+                    .padding(6.dp),
             )
         }
         Text(

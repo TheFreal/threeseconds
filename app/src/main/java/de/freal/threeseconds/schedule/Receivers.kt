@@ -6,6 +6,7 @@ import android.content.Intent
 import android.util.Log
 import de.freal.threeseconds.container
 import de.freal.threeseconds.data.AppSettings
+import de.freal.threeseconds.data.AttemptOutcome
 import de.freal.threeseconds.data.DayLog
 import de.freal.threeseconds.data.DayStatus
 import de.freal.threeseconds.data.computeStreak
@@ -53,11 +54,27 @@ class DailyTriggerReceiver : BroadcastReceiver() {
 
     private suspend fun attempt(app: Context) {
         val container = app.container
-        if (!container.settings.current().enabled) return
+        val log = container.attempts
+        val id = log.fired()
+        try {
+            attempt(app, container, id)
+        } catch (e: Exception) {
+            log.resolve(id, AttemptOutcome.FAILED, e.message ?: e.javaClass.simpleName)
+            throw e
+        }
+    }
+
+    private suspend fun attempt(app: Context, container: de.freal.threeseconds.AppContainer, id: Long) {
+        val log = container.attempts
+        if (!container.settings.current().enabled) {
+            log.resolve(id, AttemptOutcome.DISABLED, "The daily prompt is switched off")
+            return
+        }
 
         val today = LocalDate.now().key()
         if (container.database.days().forDay(today)?.status == DayStatus.RECORDED) {
             Log.i(TAG, "Already recorded today; arming tomorrow")
+            log.resolve(id, AttemptOutcome.ALREADY_RECORDED, "Today already has a clip")
             container.scheduler.ensureScheduled(force = true, skipToday = true)
             return
         }
@@ -65,14 +82,20 @@ class DailyTriggerReceiver : BroadcastReceiver() {
         val glasses = GlassesManager.sampleStatus()
         if (!glasses.worn) {
             Log.i(TAG, "Glasses are not on (connected=${glasses.connected}); re-rolling")
-            if (!container.scheduler.rerollWithinToday()) closeUnpromptedDay(container)
+            val why = if (glasses.connected) "Glasses connected but not worn" else "Glasses not connected"
+            // Resolve before re-rolling: arming the next moment closes any row still pending.
+            log.resolve(id, AttemptOutcome.NOT_WORN, why)
+            if (!container.scheduler.rerollWithinToday()) {
+                log.resolve(id, AttemptOutcome.NOT_WORN, "$why; no time left in today's window")
+                closeUnpromptedDay(container)
+            }
             return
         }
 
-        prompt(app, container)
+        prompt(app, container, id)
     }
 
-    private suspend fun prompt(app: Context, container: de.freal.threeseconds.AppContainer) {
+    private suspend fun prompt(app: Context, container: de.freal.threeseconds.AppContainer, id: Long) {
         val settings = container.settings.current()
         val streak = computeStreak(container.database.days().recent(400)).current
         val deadline = System.currentTimeMillis() + AppSettings.COUNTDOWN_MS
@@ -85,6 +108,16 @@ class DailyTriggerReceiver : BroadcastReceiver() {
             Notifications.buildPrompt(app, settings.snoozeCount, streak, deadline),
         )
         Log.i(TAG, "Prompt posted with a ${AppSettings.COUNTDOWN_MS / 1000}s countdown")
+
+        val blocked = Notifications.promptBlockedReason(app)
+        if (blocked != null) {
+            container.attempts.resolve(id, AttemptOutcome.BLOCKED, blocked)
+        } else {
+            val dnd = if (Notifications.doNotDisturbOn(app)) "Do Not Disturb was on. " else ""
+            container.attempts.resolve(
+                id, AttemptOutcome.PROMPTED, "${dnd}Countdown ${AppSettings.COUNTDOWN_MS / 1000}s",
+            )
+        }
     }
 
     /**
@@ -115,8 +148,12 @@ class DailyTriggerReceiver : BroadcastReceiver() {
         Notifications.cancel(app, Notifications.ID_PROMPT)
 
         val today = LocalDate.now().key()
-        if (container.database.days().forDay(today)?.status == DayStatus.RECORDED) return
+        if (container.database.days().forDay(today)?.status == DayStatus.RECORDED) {
+            container.attempts.respondToOpenPrompt("Countdown ran out; today was already recorded")
+            return
+        }
 
+        container.attempts.respondToOpenPrompt("No answer before the countdown ran out; day missed")
         container.database.days().upsert(
             DayLog(day = today, status = DayStatus.MISSED, updatedAt = System.currentTimeMillis())
         )
