@@ -1,0 +1,54 @@
+{
+  // Anything that touches a device goes through scripts/deploy.sh, which shows a
+  // numbered menu of connected devices by model name and exports ANDROID_SERIAL for
+  // gradle and adb. With one device attached it does not ask.
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "assembleDebug",
+      "type": "shell",
+      "command": "./gradlew :app:assembleDebug",
+      "group": { "kind": "build", "isDefault": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "run debug build",
+      "type": "shell",
+      "command": "./scripts/deploy.sh debug",
+      "problemMatcher": []
+    },
+    {
+      "label": "run release build (no debugging)",
+      "type": "shell",
+      "command": "./scripts/deploy.sh release",
+      "problemMatcher": []
+    },
+    {
+      "label": "run debug build + logcat",
+      "type": "shell",
+      "command": "./scripts/deploy.sh debug --logcat",
+      "problemMatcher": [],
+      "isBackground": true
+    },
+    {
+      "label": "unit tests",
+      "type": "shell",
+      "command": "./gradlew :app:testDebugUnitTest",
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "device tests (MockDeviceKit)",
+      "type": "shell",
+      "command": "./gradlew :app:connectedDebugAndroidTest",
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "list devices",
+      "type": "shell",
+      "command": "adb devices -l",
+      "problemMatcher": []
+    }
+  ]
+}

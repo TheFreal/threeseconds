@@ -1,0 +1,65 @@
+{
+  // Android debugging in VS Code needs the "Android" extension:
+  //   adelphes.android-dev-ext
+  //
+  // Two kinds of entry below:
+  //
+  //  * "run" entries call scripts/deploy.sh, which shows a numbered device menu with
+  //    model names (wireless adb serials are far too long to type), installs and starts
+  //    the app normally. No debugger, so the app just runs. Use these day to day.
+  //
+  //  * "debug" entries use the Android extension so breakpoints work. These launch with
+  //    `am start -D`, which means the app stays SUSPENDED and invisible until the
+  //    debugger attaches -- if attaching fails, it looks like nothing launched at all.
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "3S: run debug build (pick device)",
+      "type": "node-terminal",
+      "request": "launch",
+      "cwd": "${workspaceFolder}",
+      "command": "./scripts/deploy.sh debug"
+    },
+    {
+      "name": "3S: run release build (pick device)",
+      "type": "node-terminal",
+      "request": "launch",
+      "cwd": "${workspaceFolder}",
+      "command": "./scripts/deploy.sh release"
+    },
+    {
+      "name": "3S: run debug build + logcat",
+      "type": "node-terminal",
+      "request": "launch",
+      "cwd": "${workspaceFolder}",
+      "command": "./scripts/deploy.sh debug --logcat"
+    },
+    {
+      "name": "3S: debug with breakpoints (pick device)",
+      "type": "android",
+      "request": "launch",
+      "appSrcRoot": "${workspaceFolder}/app/src/main",
+      "apkFile": "${workspaceFolder}/app/build/outputs/apk/debug/app-debug.apk",
+      "manifestFile": "${workspaceFolder}/app/src/main/AndroidManifest.xml",
+      "launchActivity": ".ui.MainActivity",
+      "adbPort": 5037,
+      "autoStartADB": true,
+      "preLaunchTask": "assembleDebug",
+      // The extension waits postLaunchPause, then polls `adb jdwp` for 10s. A cold
+      // first launch after an install can still be warming up when that closes.
+      "postLaunchPause": 5000,
+      // Always shows the extension's own device picker.
+      "targetDevice": "${command:PickAndroidDevice}"
+    },
+    {
+      "name": "3S: attach to running app",
+      "type": "android",
+      "request": "attach",
+      "appSrcRoot": "${workspaceFolder}/app/src/main",
+      "adbPort": 5037,
+      // Start the app with a "run" entry above first, then attach with this. Avoids
+      // `am start -D` entirely, which is the fragile part.
+      "processId": "${command:PickAndroidProcess}"
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">3S</string>
+    <string name="channel_prompt_name">Daily prompt</string>
+    <string name="channel_prompt_desc">The once-a-day nudge to record three seconds.</string>
+    <string name="channel_status_name">Recording status</string>
+    <string name="channel_status_desc">Shown while the glasses are connecting or recording.</string>
+</resources>
