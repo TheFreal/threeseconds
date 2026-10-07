@@ -34,7 +34,8 @@ sealed interface RecordResult {
  * Captures a short clip from the glasses camera.
  *
  * The DAT SDK has no "record to file" call -- it exposes a frame stream -- so a clip
- * is the stream run for [durationMs] with every access unit handed to [Mp4FrameWriter].
+ * is the stream run for [durationMs] with every access unit handed to [Mp4FrameWriter],
+ * which muxes them once the stream has stopped.
  * Duration is measured from frame timestamps rather than wall clock, so the Bluetooth
  * connection warming up does not eat into the three seconds.
  */
@@ -100,14 +101,19 @@ class ClipRecorder(
                     true
                 }
 
-                if (!writer.hasVideo) {
-                    return RecordResult.Failure("No video arrived from the glasses")
-                }
                 if (completed == null) {
+                    // A link that stalls part way through leaves a few frames that are
+                    // not worth saving as the day's clip; only keep a capture that reached
+                    // at least half the target.
+                    if (writer.durationMs < durationMs / 2) {
+                        return RecordResult.Failure("The glasses stopped sending video")
+                    }
                     Log.w(TAG, "Capture timed out with ${writer.durationMs}ms; keeping what we got")
                 }
 
-                writer.close()
+                if (!writer.finish()) {
+                    return RecordResult.Failure("No video arrived from the glasses")
+                }
                 return RecordResult.Success(
                     file = outputFile,
                     width = writer.width,

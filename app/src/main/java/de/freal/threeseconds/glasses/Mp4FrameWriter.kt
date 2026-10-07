@@ -15,25 +15,32 @@ import java.nio.ByteBuffer
  *
  * The DAT SDK hands us already-encoded HEVC when the stream is configured with
  * `compressVideo = true`, so there is nothing to encode here -- we only need the
- * parameter sets for the track format and then a straight copy of every access
- * unit. That keeps a 3 second capture effectively instant and avoids a second
- * generation of lossy compression on top of the Bluetooth bandwidth ladder.
+ * parameter sets for the track format and then a copy of every access unit. That keeps
+ * a 3 second capture effectively instant and avoids a second generation of lossy
+ * compression on top of the Bluetooth bandwidth ladder.
+ *
+ * Capture and muxing are split. [onFrame] only copies the bytes out of the SDK's buffer,
+ * because on real glasses that buffer is reused for the next frame: any time spent
+ * parsing or muxing inside the collector let the next frame overwrite the current one
+ * before we had read it. Three seconds of HEVC is well under a megabyte, so the frames
+ * are held in memory and written out in one go by [finish].
  */
 class Mp4FrameWriter(
     private val outputFile: File,
     private val frameRate: Int,
 ) : Closeable {
 
-    private var muxer: MediaMuxer? = null
-    private var trackIndex = -1
-    private var started = false
-    private var closed = false
+    private class Captured(val bytes: ByteArray, val ptsUs: Long, val isConfig: Boolean)
 
-    private var codecConfig: ByteArray? = null
+    private val captured = ArrayList<Captured>(128)
+    private var finished = false
+
     private var firstPtsUs = -1L
     private var lastPtsUs = 0L
 
     var frameCount = 0
+        private set
+    var droppedCount = 0
         private set
     var width = 0
         private set
@@ -44,90 +51,114 @@ class Mp4FrameWriter(
     val durationMs: Long
         get() = if (firstPtsUs < 0) 0 else (lastPtsUs - firstPtsUs) / 1000
 
-    /**
-     * Returns true once the writer has accepted at least one real frame, i.e. the
-     * file will be playable if we stop now.
-     */
-    val hasVideo: Boolean get() = started && frameCount > 0
+    /** Returns true once [finish] has written at least one playable frame. */
+    val hasVideo: Boolean get() = frameCount > 0
 
     fun onFrame(frame: VideoFrame) {
-        if (closed) return
+        if (finished) return
         require(frame.isCompressed) {
             "Mp4FrameWriter needs compressed frames; configure the stream with compressVideo = true"
         }
 
-        val buffer = frame.buffer.duplicate()
-        if (buffer.remaining() <= 0) return
+        // Copy first, before anything else touches the frame.
+        val src = frame.buffer.duplicate()
+        if (src.remaining() <= 0) return
+        val bytes = ByteArray(src.remaining()).also { src.get(it) }
 
         if (frame.isCodecConfig) {
-            // The config frame is not necessarily clean Annex-B: observed buffers carry
-            // a few leading bytes before the first start code, and MediaMuxer rejects
-            // the track if those reach csd-0. Rebuild it from the parsed NAL units.
-            codecConfig = HevcNal.parameterSets(buffer)
-            if (codecConfig == null) Log.w(TAG, "Codec config frame carried no parameter sets")
+            captured += Captured(bytes, 0, isConfig = true)
             return
         }
 
-        if (!started) {
-            // Some firmware inlines the parameter sets ahead of the first IDR rather
-            // than sending a standalone codec-config frame, so fall back to scraping
-            // them off the front of this access unit.
-            val csd = codecConfig ?: HevcNal.parameterSets(buffer)
-            if (csd == null) {
-                Log.w(TAG, "Dropping frame: no HEVC parameter sets yet")
-                return
-            }
-            start(frame, csd)
+        if (width == 0) {
+            width = frame.width
+            height = frame.height
         }
-
         val pts = frame.presentationTimeUs
         if (firstPtsUs < 0) firstPtsUs = pts
         lastPtsUs = maxOf(lastPtsUs, pts)
-
-        val info = MediaCodec.BufferInfo().apply {
-            offset = 0
-            size = buffer.remaining()
-            presentationTimeUs = pts - firstPtsUs
-            flags = if (HevcNal.isKeyFrame(buffer)) MediaCodec.BUFFER_FLAG_KEY_FRAME else 0
-        }
-
-        try {
-            muxer?.writeSampleData(trackIndex, buffer, info)
-            frameCount++
-        } catch (e: IllegalStateException) {
-            Log.e(TAG, "writeSampleData failed", e)
-        }
+        captured += Captured(bytes, pts, isConfig = false)
     }
 
-    private fun start(frame: VideoFrame, csd: ByteArray) {
-        width = frame.width
-        height = frame.height
+    /**
+     * Cleans up the captured access units and writes the .mp4. Returns true if the file
+     * holds at least one frame. Safe to call more than once.
+     */
+    fun finish(): Boolean {
+        if (finished) return hasVideo
+        finished = true
 
-        val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_HEVC, width, height).apply {
+        var codecConfig: ByteArray? = null
+        val samples = ArrayList<Sample>(captured.size)
+        for (c in captured) {
+            if (c.isConfig) {
+                // Config frames are not necessarily clean Annex-B either, so rebuild
+                // csd-0 from the parsed NAL units rather than passing the buffer on.
+                codecConfig = HevcNal.parameterSets(c.bytes) ?: codecConfig
+                if (codecConfig == null) Log.w(TAG, "Codec config frame carried no parameter sets")
+                continue
+            }
+            samples += Sample(c.bytes, c.ptsUs)
+        }
+        captured.clear()
+
+        val kept = HevcNal.dropOverwritten(samples)
+        droppedCount = samples.size - kept.size
+        if (droppedCount > 0) Log.w(TAG, "Dropped $droppedCount frames overwritten before they were read")
+
+        var muxer: MediaMuxer? = null
+        var track = -1
+        try {
+            for (sample in kept) {
+                val au = HevcNal.normalize(sample.bytes) ?: continue
+                val key = HevcNal.isKeyFrame(au)
+
+                if (muxer == null) {
+                    // Nothing before the first IRAP picture can be decoded, and some
+                    // firmware inlines the parameter sets ahead of the first IDR rather
+                    // than sending a standalone codec-config frame.
+                    if (!key) continue
+                    val csd = codecConfig ?: HevcNal.parameterSets(au)
+                    if (csd == null) {
+                        Log.w(TAG, "Dropping keyframe: no HEVC parameter sets yet")
+                        continue
+                    }
+                    muxer = MediaMuxer(outputFile.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+                    track = muxer.addTrack(trackFormat(csd))
+                    muxer.start()
+                    firstPtsUs = sample.ptsUs
+                    Log.i(TAG, "Muxer started ${width}x$height @ ${frameRate}fps")
+                }
+
+                val info = MediaCodec.BufferInfo().apply {
+                    offset = 0
+                    size = au.size
+                    presentationTimeUs = sample.ptsUs - firstPtsUs
+                    flags = if (key) MediaCodec.BUFFER_FLAG_KEY_FRAME else 0
+                }
+                muxer.writeSampleData(track, ByteBuffer.wrap(au), info)
+                frameCount++
+                lastPtsUs = sample.ptsUs
+            }
+            if (muxer != null && frameCount > 0) muxer.stop()
+        } catch (e: IllegalStateException) {
+            Log.e(TAG, "Muxing failed", e)
+            frameCount = 0
+        } finally {
+            runCatching { muxer?.release() }
+        }
+        return hasVideo
+    }
+
+    private fun trackFormat(csd: ByteArray): MediaFormat =
+        MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_HEVC, width, height).apply {
             setInteger(MediaFormat.KEY_FRAME_RATE, frameRate)
             setByteBuffer("csd-0", ByteBuffer.wrap(csd))
         }
 
-        val m = MediaMuxer(outputFile.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
-        trackIndex = m.addTrack(format)
-        m.start()
-        muxer = m
-        started = true
-        Log.i(TAG, "Muxer started ${width}x$height @ ${frameRate}fps")
-    }
-
     override fun close() {
-        if (closed) return
-        closed = true
-        val m = muxer ?: return
-        try {
-            if (started && frameCount > 0) m.stop()
-        } catch (e: IllegalStateException) {
-            Log.e(TAG, "Muxer stop failed", e)
-        } finally {
-            runCatching { m.release() }
-            muxer = null
-        }
+        finished = true
+        captured.clear()
     }
 
     private companion object {
@@ -135,7 +166,18 @@ class Mp4FrameWriter(
     }
 }
 
-/** Minimal Annex-B HEVC NAL parsing: just enough for keyframe and parameter-set detection. */
+internal class Sample(val bytes: ByteArray, val ptsUs: Long)
+
+/**
+ * Minimal Annex-B HEVC NAL parsing: enough to clean up what the glasses send and to
+ * find keyframes and parameter sets.
+ *
+ * Real glasses put a small transport header in front of every access unit (it contains
+ * an RTP header: `80 60`, sequence number, timestamp), followed by zero padding, before
+ * the first start code. MediaMuxer treats everything between start codes as a NAL unit,
+ * so passing those buffers through unchanged wrote the header into every sample as a
+ * bogus NAL unit and no decoder could play the file.
+ */
 internal object HevcNal {
 
     private const val NAL_VPS = 32
@@ -145,22 +187,33 @@ internal object HevcNal {
     /** IRAP picture range (BLA_W_LP .. RSV_IRAP_VCL23). */
     private val IRAP = 16..23
 
-    private data class Nal(val type: Int, val start: Int, val end: Int)
+    /** NAL unit types defined by the spec; reserved and unspecified ones are dropped. */
+    private val DEFINED = (0..9) + (16..21) + (32..40)
 
-    fun isKeyFrame(buffer: ByteBuffer): Boolean =
-        parse(buffer.toByteArray()).any { it.type in IRAP }
+    private class Nal(val type: Int, val payloadStart: Int, val end: Int)
+
+    fun isKeyFrame(bytes: ByteArray): Boolean = parse(bytes).any { it.type in IRAP }
 
     /**
-     * Builds a csd-0 blob holding one VPS, one SPS and one PPS, each re-prefixed with a
-     * clean 4 byte start code.
-     *
-     * Rebuilding rather than slicing matters: the buffers coming off the glasses may
-     * carry leading bytes before the first start code, repeated start codes, or the
-     * parameter sets inlined ahead of the first IDR. Normalising here means the muxer
-     * always sees well-formed csd regardless of which shape arrived.
+     * Rebuilds an access unit as clean Annex-B: anything before the first start code
+     * is discarded, empty and malformed NAL units are dropped, and every remaining unit
+     * gets a 4 byte start code. Returns null if nothing usable is left.
      */
-    fun parameterSets(buffer: ByteBuffer): ByteArray? {
-        val bytes = buffer.toByteArray()
+    fun normalize(bytes: ByteArray): ByteArray? {
+        val out = ByteArrayOutputStream(bytes.size + 16)
+        for (nal in parse(bytes)) {
+            if (nal.type !in DEFINED) continue
+            out.write(START_CODE)
+            out.write(bytes, nal.payloadStart, nal.end - nal.payloadStart)
+        }
+        return out.toByteArray().takeIf { it.isNotEmpty() }
+    }
+
+    /**
+     * Builds a csd-0 blob holding one VPS, one SPS and one PPS, each prefixed with a
+     * 4 byte start code.
+     */
+    fun parameterSets(bytes: ByteArray): ByteArray? {
         val wanted = listOf(NAL_VPS, NAL_SPS, NAL_PPS)
         val found = parse(bytes).filter { it.type in wanted }
         if (found.isEmpty()) return null
@@ -168,28 +221,69 @@ internal object HevcNal {
         val out = ByteArrayOutputStream()
         for (type in wanted) {
             val nal = found.firstOrNull { it.type == type } ?: continue
-            val payloadStart = nal.start + startCodeLength(bytes, nal.start)
-            if (payloadStart >= nal.end) continue
-            out.write(byteArrayOf(0, 0, 0, 1))
-            out.write(bytes, payloadStart, nal.end - payloadStart)
+            out.write(START_CODE)
+            out.write(bytes, nal.payloadStart, nal.end - nal.payloadStart)
         }
-        val csd = out.toByteArray()
-        return csd.takeIf { it.isNotEmpty() }
+        return out.toByteArray().takeIf { it.isNotEmpty() }
     }
 
-    /** Splits an Annex-B buffer into its NAL units, start code included in each range. */
+    /**
+     * Drops frames whose buffer was overwritten by the next frame before we read it.
+     *
+     * The glasses reuse one buffer per frame, and a frame read too late carries the next
+     * frame's transport header and picture with its own (stale) length. That shows up as
+     * two consecutive frames with identical headers; the earlier copy is the torn one.
+     * Frames without a transport header (e.g. the mock device) are never dropped.
+     */
+    fun dropOverwritten(samples: List<Sample>): List<Sample> {
+        val out = ArrayList<Sample>(samples.size)
+        var previousHeader: ByteArray? = null
+        for (sample in samples) {
+            val header = transportHeader(sample.bytes)
+            if (header != null && previousHeader != null && header.contentEquals(previousHeader)) {
+                out.removeAt(out.lastIndex)
+            }
+            out += sample
+            previousHeader = header
+        }
+        return out
+    }
+
+    /** The bytes ahead of the first start code, or null if the buffer starts with one. */
+    private fun transportHeader(bytes: ByteArray): ByteArray? {
+        val sc = nextStartCode(bytes, 0)
+        if (sc <= 0) return null
+        return bytes.copyOfRange(0, sc)
+    }
+
+    /**
+     * Splits an Annex-B buffer into its NAL units. Leading bytes before the first start
+     * code are skipped, trailing zero padding is trimmed, and units too short to hold a
+     * header or with an invalid header are dropped.
+     */
     private fun parse(bytes: ByteArray): List<Nal> {
         val out = mutableListOf<Nal>()
         var sc = nextStartCode(bytes, 0)
         while (sc >= 0) {
             val payload = sc + startCodeLength(bytes, sc)
             if (payload >= bytes.size) break
-            val type = (bytes[payload].toInt() shr 1) and 0x3F
             val next = nextStartCode(bytes, payload)
-            out += Nal(type, sc, if (next < 0) bytes.size else next)
+            var end = if (next < 0) bytes.size else next
+            while (end > payload && bytes[end - 1].toInt() == 0) end--
+            if (end - payload >= 2 && validHeader(bytes[payload].toInt(), bytes[payload + 1].toInt())) {
+                out += Nal((bytes[payload].toInt() shr 1) and 0x3F, payload, end)
+            }
             sc = next
         }
         return out
+    }
+
+    /** forbidden_zero_bit clear, base layer, temporal id present. */
+    private fun validHeader(b0: Int, b1: Int): Boolean {
+        val forbidden = b0 and 0x80
+        val layerId = ((b0 and 0x01) shl 5) or ((b1 and 0xF8) shr 3)
+        val temporalIdPlus1 = b1 and 0x07
+        return forbidden == 0 && layerId == 0 && temporalIdPlus1 != 0
     }
 
     private fun startCodeLength(bytes: ByteArray, at: Int): Int =
@@ -207,8 +301,5 @@ internal object HevcNal {
         return -1
     }
 
-    private fun ByteBuffer.toByteArray(): ByteArray {
-        val dup = duplicate()
-        return ByteArray(dup.remaining()).also { dup.get(it) }
-    }
+    private val START_CODE = byteArrayOf(0, 0, 0, 1)
 }
