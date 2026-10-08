@@ -29,7 +29,7 @@ within the next 60 min            │   bridges to the watch
          │           │        (×2 max)      expires
          ▼           ▼            │            │
      NOT_WORN  RecordingService   ▼            ▼
-   streak kept  HEVC → MediaMuxer +5 min     MISSED
+   streak kept  frames → encoder  +5 min     MISSED
                      │                   streak breaks
                      ▼
          Movies/ThreeSeconds/3s_….mp4
@@ -58,14 +58,20 @@ expensive to listen for. Sampling keeps the timing independent of your behaviour
 whole check fits inside a broadcast receiver's budget, so nothing stays resident between
 attempts. A day costs a handful of alarm wakeups instead of hours of a foreground service.
 
-**HEVC passthrough.** The DAT SDK has no "record to file" API — it exposes a frame
-stream. Configuring the stream with `compressVideo = true` delivers already-encoded HEVC,
-which goes straight into `MediaMuxer`. No decode, no re-encode, no second generation of
-loss on top of what the Bluetooth bandwidth ladder already costs, and the file is written
-as fast as the frames arrive.
+**Capture first, encode after.** The DAT SDK has no "record to file" API, and the glasses
+can't record a video and send the file: video only exists as a live stream over
+Bluetooth. The SDK decodes that stream, the decoded pictures are spooled to disk, and the
+camera is switched off the moment the clip is long enough. Only then is the clip encoded
+on the phone, at a generous bitrate with a keyframe every second.
+
+Passing the glasses' HEVC straight into the file looked cheaper, but every frame depends
+on the one before it, so a single frame lost on the link or overwritten in the SDK's
+buffer smeared the picture ("datamosh") until the next keyframe. A decoded picture stands
+on its own; a lost one is a short skip.
 
 Clip length is measured from frame timestamps, not wall clock, so the seconds spent
-waking the Bluetooth link never eat into your three seconds.
+waking the Bluetooth link never eat into your three seconds. Each recording's step
+timings show up on the Debug tab.
 
 ## Setup
 
@@ -185,15 +191,17 @@ valve against pathological configurations, not the real limit — the window is.
 
 The instrumentation tests run against **MockDeviceKit**, so they need no glasses. They
 encode a synthetic HEVC clip on device, feed it through the mock camera, and assert the
-recorder produces a genuinely playable MP4 — the capture and montage paths both hand-roll
-MediaMuxer, so they are checked sample by sample rather than trusted.
+recorder produces a genuinely playable MP4, walking it sample by sample. The emulator's
+HEVC encoder stops at 512 pixels, so there the clip comes out as AVC.
 
 ## Layout
 
 | Path | What |
 |---|---|
-| `glasses/ClipRecorder.kt` | Session → camera → N seconds of frames |
-| `glasses/Mp4FrameWriter.kt` | HEVC access units → .mp4, including NAL parsing for `csd-0` |
+| `glasses/ClipRecorder.kt` | Session → camera → N seconds of decoded frames, with step timings |
+| `glasses/FrameSpool.kt` | Decoded frames on disk while the camera runs |
+| `glasses/ClipEncoder.kt` | Spooled frames → .mp4, after the camera is off |
+| `glasses/YuvFrame.kt` | Works out the decoder's frame layout; crops and scales into the encoder |
 | `glasses/GlassesManager.kt` | Connection and worn state, without opening a session |
 | `notify/Notifications.kt` | The prompt, and the Wear actions |
 | `notify/PromptActionReceiver.kt` | Record / snooze, executed on the phone |

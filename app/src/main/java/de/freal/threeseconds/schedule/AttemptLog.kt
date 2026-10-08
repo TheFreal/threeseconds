@@ -65,6 +65,25 @@ class AttemptLog(private val dao: AttemptDao) {
         dao.update(row.copy(response = response))
     }
 
+    /** A recording started from the app; returns the row for its result. */
+    suspend fun manual(): Long {
+        val now = now()
+        return dao.insert(
+            Attempt(
+                kind = AttemptKind.MANUAL,
+                scheduledAt = now,
+                createdAt = now,
+                firedAt = now,
+                outcome = AttemptOutcome.MANUAL,
+            )
+        )
+    }
+
+    suspend fun timings(id: Long, timings: String) {
+        val row = dao.byId(id) ?: return
+        dao.update(row.copy(timings = timings.ifBlank { null }))
+    }
+
     /** Attaches [response] to the latest unanswered prompt and returns its id. */
     suspend fun respondToOpenPrompt(response: String): Long? {
         val row = dao.openPrompt() ?: return null

@@ -102,16 +102,18 @@ class ClipRecorderTest {
         assertTrue("Output file is empty", output.length() > 0)
         assertTrue("Expected several frames, got ${result.frameCount}", result.frameCount > 10)
 
-        // The file must be readable as a real HEVC video track, not just bytes on disk.
+        // The file must be readable as a real video track, not just bytes on disk. HEVC
+        // where the phone's encoder takes the size; the emulator's stops at 512 pixels.
         val extractor = MediaExtractor()
         try {
             extractor.setDataSource(output.absolutePath)
             assertTrue("No tracks in the output", extractor.trackCount > 0)
 
             val format = extractor.getTrackFormat(0)
-            assertEquals(
-                MediaFormat.MIMETYPE_VIDEO_HEVC,
-                format.getString(MediaFormat.KEY_MIME),
+            val mime = format.getString(MediaFormat.KEY_MIME)
+            assertTrue(
+                "Expected HEVC or AVC, got $mime",
+                mime == MediaFormat.MIMETYPE_VIDEO_HEVC || mime == MediaFormat.MIMETYPE_VIDEO_AVC,
             )
 
             val durationUs = format.getLong(MediaFormat.KEY_DURATION)

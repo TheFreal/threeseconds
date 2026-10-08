@@ -26,11 +26,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import de.freal.threeseconds.data.AppSettings
 import de.freal.threeseconds.data.Attempt
+import de.freal.threeseconds.data.AttemptKind
 import de.freal.threeseconds.data.AttemptOutcome
 import de.freal.threeseconds.data.appToday
 import de.freal.threeseconds.data.key
@@ -192,7 +194,7 @@ private fun AttemptRow(attempt: Attempt) {
                 )
             }
 
-            attempt.firedAt?.let { fired ->
+            attempt.firedAt?.takeIf { attempt.kind != AttemptKind.MANUAL }?.let { fired ->
                 val late = fired - attempt.scheduledAt
                 Muted(
                     "Fired ${clock(fired)}" + if (late >= 60_000L) " (${span(late)} late)" else ""
@@ -210,6 +212,15 @@ private fun AttemptRow(attempt: Attempt) {
             }
             attempt.detail?.let { Muted(it) }
             attempt.response?.let { Text("→ $it", style = MaterialTheme.typography.bodySmall) }
+            attempt.timings?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontFamily = FontFamily.Monospace,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
         }
     }
 }
@@ -229,7 +240,8 @@ private fun Muted(text: String) {
 }
 
 private fun outcomeColor(outcome: AttemptOutcome): Color = when (outcome) {
-    AttemptOutcome.PROMPTED -> GOOD
+    AttemptOutcome.PROMPTED,
+    AttemptOutcome.MANUAL -> GOOD
     AttemptOutcome.NOT_WORN,
     AttemptOutcome.ALREADY_RECORDED,
     AttemptOutcome.DISABLED,

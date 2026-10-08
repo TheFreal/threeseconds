@@ -57,12 +57,10 @@ class RecordingService : Service() {
 
         val fromPrompt = intent?.getBooleanExtra(EXTRA_FROM_PROMPT, false) == true
         job = scope.launch {
-            // Ties this capture to the prompt row on the debug screen.
-            val attemptId = if (fromPrompt) {
-                applicationContext.container.attempts.respondToOpenPrompt("Record tapped")
-            } else {
-                null
-            }
+            // Ties this capture to its row on the debug screen: the prompt's, or a new one
+            // for a recording started from the app.
+            val attempts = applicationContext.container.attempts
+            val attemptId = if (fromPrompt) attempts.respondToOpenPrompt("Record tapped") else attempts.manual()
             try {
                 capture(attemptId)
             } catch (e: Exception) {
@@ -88,6 +86,8 @@ class RecordingService : Service() {
                 .getOrDefault(VideoQuality.MEDIUM),
             frameRate = settings.frameRate,
         ).record()
+        Log.i(TAG, "Recording timings:\n${result.timings}")
+        attemptId?.let { container.attempts.timings(it, result.timings) }
 
         when (result) {
             is RecordResult.Failure -> {

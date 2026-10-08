@@ -27,6 +27,8 @@ data class Attempt(
     val detail: String? = null,
     /** What the user did with a prompt that was shown. */
     val response: String? = null,
+    /** How long each step of the recording took, if one was made. */
+    val timings: String? = null,
 )
 
 /**
@@ -45,6 +47,9 @@ enum class AttemptKind(val label: String) {
     FIRST("First attempt"),
     RETRY("Retry"),
     SNOOZE("Snooze"),
+
+    /** Not an alarm: Record tapped in the app. Logged so its timings show up too. */
+    MANUAL("From the app"),
 }
 
 enum class AttemptOutcome(val label: String) {
@@ -67,6 +72,9 @@ enum class AttemptOutcome(val label: String) {
     NEVER_FIRED("Alarm never fired"),
 
     FAILED("Error"),
+
+    /** A recording started from the app rather than a prompt. */
+    MANUAL("Recorded from the app"),
 }
 
 @Dao
