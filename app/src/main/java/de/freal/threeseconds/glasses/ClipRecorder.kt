@@ -47,7 +47,8 @@ class ClipRecorder(
 ) {
 
     suspend fun record(): RecordResult {
-        if (!GlassesManager.hasCameraPermission()) {
+        // Unknown (glasses not connected) carries on, so the failure below names the real problem.
+        if (GlassesManager.cameraPermission() == false) {
             return RecordResult.Failure("Camera access for the glasses has not been granted")
         }
 

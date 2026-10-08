@@ -78,7 +78,8 @@ private enum class Tab(val label: String) {
 @Composable
 fun AppScaffold(
     viewModel: MainViewModel,
-    cameraGranted: Boolean,
+    /** Only true when the glasses said no; unknown counts as not denied. */
+    cameraDenied: Boolean,
     onConnectGlasses: () -> Unit,
     onGrantCamera: () -> Unit,
 ) {
@@ -117,7 +118,7 @@ fun AppScaffold(
                 .fillMaxSize()
         ) {
             when (tab) {
-                Tab.Today -> TodayScreen(state, viewModel, cameraGranted, onConnectGlasses, onGrantCamera)
+                Tab.Today -> TodayScreen(state, viewModel, cameraDenied, onConnectGlasses, onGrantCamera)
                 Tab.Clips -> ClipsScreen(state.clips)
                 Tab.Montage -> MontageScreen(viewModel)
                 Tab.Settings -> SettingsScreen(state.settings, viewModel)
@@ -131,7 +132,7 @@ fun AppScaffold(
 private fun TodayScreen(
     state: HomeState,
     viewModel: MainViewModel,
-    cameraGranted: Boolean,
+    cameraDenied: Boolean,
     onConnectGlasses: () -> Unit,
     onGrantCamera: () -> Unit,
 ) {
@@ -153,17 +154,17 @@ private fun TodayScreen(
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        TodayHeadline(state, cameraGranted)
+        TodayHeadline(state, cameraDenied)
 
         StreakCalendarCard(state, firstMonth, onDayClick = { selectedDay = it })
 
         // Once set up, the glasses' state lives in the headline's subtitle; the card only
         // remains while there is something to do.
-        if (!state.isRegistered || !cameraGranted) {
-            GlassesCard(state, cameraGranted, onConnectGlasses, onGrantCamera)
+        if (!state.isRegistered || cameraDenied) {
+            GlassesCard(state, cameraDenied, onConnectGlasses, onGrantCamera)
         }
 
-        if (state.isRegistered && cameraGranted) {
+        if (state.isRegistered && !cameraDenied) {
             Button(
                 onClick = viewModel::recordNow,
                 modifier = Modifier.fillMaxWidth().height(56.dp),
@@ -185,7 +186,7 @@ private fun TodayScreen(
 }
 
 @Composable
-private fun TodayHeadline(state: HomeState, cameraGranted: Boolean) {
+private fun TodayHeadline(state: HomeState, cameraDenied: Boolean) {
     Column(Modifier.padding(horizontal = 4.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(
             if (state.streak.recordedToday) "Today is in the bag." else "Today is still open.",
@@ -195,7 +196,7 @@ private fun TodayHeadline(state: HomeState, cameraGranted: Boolean) {
         val name = g.name ?: "Your glasses"
         val (ok, line) = when {
             !state.isRegistered -> false to "Glasses not linked to 3S yet"
-            !cameraGranted -> false to "Camera access on the glasses not allowed yet"
+            cameraDenied -> false to "Camera access on the glasses not allowed yet"
             !g.connected -> false to "$name: not connected"
             !g.worn -> false to "$name: connected, not being worn"
             else -> true to "$name: connected and being worn"
@@ -218,7 +219,7 @@ private fun TodayHeadline(state: HomeState, cameraGranted: Boolean) {
 @Composable
 private fun GlassesCard(
     state: HomeState,
-    cameraGranted: Boolean,
+    cameraDenied: Boolean,
     onConnectGlasses: () -> Unit,
     onGrantCamera: () -> Unit,
 ) {
@@ -239,7 +240,7 @@ private fun GlassesCard(
                     Button(onClick = onConnectGlasses) { Text("Connect glasses") }
                 }
 
-                !cameraGranted -> {
+                cameraDenied -> {
                     Text(
                         "Allow camera access on the glasses to record clips.",
                         style = MaterialTheme.typography.bodyMedium,

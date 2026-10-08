@@ -13,19 +13,24 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import com.meta.wearable.dat.core.Wearables
 import com.meta.wearable.dat.core.types.Permission
 import com.meta.wearable.dat.core.types.PermissionStatus
 import de.freal.threeseconds.glasses.GlassesManager
 import de.freal.threeseconds.ui.theme.ThreeSecondsTheme
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
     private val viewModel: MainViewModel by viewModels()
 
-    private var cameraGranted by mutableStateOf(false)
+    /** Null until the glasses have been connected long enough to ask. */
+    private var cameraGranted by mutableStateOf<Boolean?>(null)
 
     private val systemPermissions =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { }
@@ -41,11 +46,22 @@ class MainActivity : ComponentActivity() {
 
         requestSystemPermissions()
 
+        // The DAT camera grant can be changed outside this app, in the Meta AI settings,
+        // and can only be read while the glasses are connected -- so check on every
+        // resume and again whenever they connect. An unknown answer keeps the last one.
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                GlassesManager.status.map { it.connected }.distinctUntilChanged().collect {
+                    GlassesManager.cameraPermission()?.let { cameraGranted = it }
+                }
+            }
+        }
+
         setContent {
             ThreeSecondsTheme {
                 AppScaffold(
                     viewModel = viewModel,
-                    cameraGranted = cameraGranted,
+                    cameraDenied = cameraGranted == false,
                     onConnectGlasses = { GlassesManager.startRegistration(this) },
                     onGrantCamera = { datCameraPermission.launch(Permission.CAMERA) },
                 )
@@ -71,11 +87,5 @@ class MainActivity : ComponentActivity() {
         }
 
         if (wanted.isNotEmpty()) systemPermissions.launch(wanted.toTypedArray())
-    }
-
-    override fun onResume() {
-        super.onResume()
-        // The DAT camera grant can be changed outside this app, in the Meta AI settings.
-        lifecycleScope.launch { cameraGranted = GlassesManager.hasCameraPermission() }
     }
 }

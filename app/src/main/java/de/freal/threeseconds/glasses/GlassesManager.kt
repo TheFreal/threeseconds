@@ -125,10 +125,16 @@ object GlassesManager {
         return withTimeoutOrNull(wornGraceMs) { status.firstOrNull { it.worn } } ?: connected
     }
 
-    suspend fun hasCameraPermission(): Boolean =
-        Wearables.checkPermissionStatus(Permission.CAMERA)
-            .map { it is PermissionStatus.Granted }
-            .getOrDefault(false)
+    /**
+     * Whether the glasses' camera is granted to this app, or null when that can't be
+     * told: the SDK only answers for connected glasses and otherwise fails with
+     * NO_DEVICE, which is not the same as being denied.
+     */
+    suspend fun cameraPermission(): Boolean? {
+        val result = Wearables.checkPermissionStatus(Permission.CAMERA)
+        result.errorOrNull()?.let { Log.i(TAG, "Camera permission unknown: ${it.description}") }
+        return result.getOrNull()?.let { it is PermissionStatus.Granted }
+    }
 
     fun startRegistration(activity: Activity) = Wearables.startRegistration(activity)
 
