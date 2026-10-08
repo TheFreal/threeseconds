@@ -18,10 +18,14 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -47,7 +51,7 @@ private val BAD = Color(0xFFE57373)
 
 /**
  * What the scheduler plans next, what could stop it, and how the last attempts went.
- * Everything here is read-only.
+ * Read-only apart from the test prompt, which leaves the day and its schedule alone.
  */
 @Composable
 fun DebugScreen(viewModel: MainViewModel, settings: AppSettings) {
@@ -70,6 +74,7 @@ fun DebugScreen(viewModel: MainViewModel, settings: AppSettings) {
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item { NextCard(settings, next, checks?.checkedAt ?: System.currentTimeMillis()) }
+        item { TestPromptCard(viewModel) }
         checks?.let { item { ChecksCard(it) } }
         item {
             Text(
@@ -88,6 +93,28 @@ fun DebugScreen(viewModel: MainViewModel, settings: AppSettings) {
             }
         }
         items(recent, key = { it.id }) { AttemptRow(it) }
+    }
+}
+
+/** Sends the real prompt through the real alarm path, without the day riding on it. */
+@Composable
+private fun TestPromptCard(viewModel: MainViewModel) {
+    var armedFor by remember { mutableStateOf<Long?>(null) }
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Test the prompt", style = MaterialTheme.typography.titleMedium)
+            Muted(
+                "Arms a real alarm. When it goes off, the prompt lands on your phone and watch " +
+                    "as it would for real, without checking for your glasses. Record saves a real " +
+                    "clip and replaces today's. Snoozing sends the test again in " +
+                    "${AppSettings.SNOOZE_MINUTES} minutes; neither that nor letting it run out " +
+                    "touches your streak or today's prompt."
+            )
+            OutlinedButton(onClick = { armedFor = viewModel.sendTestPrompt() }) {
+                Text("Send a test prompt in 5 seconds")
+            }
+            armedFor?.let { Muted("Armed for ${clock(it)}. Lock the phone to see it arrive as it would.") }
+        }
     }
 }
 

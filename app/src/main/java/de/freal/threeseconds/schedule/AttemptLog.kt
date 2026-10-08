@@ -79,6 +79,20 @@ class AttemptLog(private val dao: AttemptDao) {
         )
     }
 
+    /** A test prompt's alarm went off; [armedFor] is when it was meant to. */
+    suspend fun testFired(armedFor: Long): Long {
+        val now = now()
+        return dao.insert(
+            Attempt(
+                kind = AttemptKind.TEST,
+                scheduledAt = armedFor,
+                createdAt = now,
+                firedAt = now,
+                outcome = AttemptOutcome.FIRING,
+            )
+        )
+    }
+
     suspend fun timings(id: Long, timings: String) {
         val row = dao.byId(id) ?: return
         dao.update(row.copy(timings = timings.ifBlank { null }))

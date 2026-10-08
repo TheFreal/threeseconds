@@ -171,6 +171,41 @@ class DailyScheduler(
         alarmManager.cancel(expiryIntent())
     }
 
+    /**
+     * Arms a test prompt for [atMillis] on its own alarm, so the day's real moment stays
+     * armed. Same exact-alarm path as the real thing, so it also shows how late alarms fire.
+     */
+    fun armTestPrompt(atMillis: Long) {
+        val intent = Intent(context, DailyTriggerReceiver::class.java)
+            .setAction(DailyTriggerReceiver.ACTION_TEST_FIRE)
+            .putExtra(DailyTriggerReceiver.EXTRA_ARMED_FOR, atMillis)
+        val pi = PendingIntent.getBroadcast(
+            context, REQ_TEST, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        try {
+            if (exactAlarmsAllowed()) {
+                alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, atMillis, pi)
+            } else {
+                alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, atMillis, pi)
+            }
+        } catch (e: SecurityException) {
+            Log.e(TAG, "Not allowed to arm the test prompt", e)
+        }
+    }
+
+    /** The test prompt's countdown, which only clears the notification when it runs out. */
+    fun armTestExpiry(atMillis: Long) {
+        try {
+            alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, atMillis, testExpiryIntent())
+        } catch (e: SecurityException) {
+            Log.e(TAG, "Not allowed to arm the test prompt expiry", e)
+        }
+    }
+
+    fun cancelTestExpiry() {
+        alarmManager.cancel(testExpiryIntent())
+    }
+
     private fun at(millis: Long) =
         LocalDateTime.ofInstant(java.time.Instant.ofEpochMilli(millis), ZoneId.systemDefault())
 
@@ -228,12 +263,22 @@ class DailyScheduler(
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
     )
 
+    private fun testExpiryIntent(): PendingIntent = PendingIntent.getBroadcast(
+        context,
+        REQ_TEST_EXPIRY,
+        Intent(context, DailyTriggerReceiver::class.java)
+            .setAction(DailyTriggerReceiver.ACTION_TEST_EXPIRED),
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+    )
+
     private fun now() = System.currentTimeMillis()
 
     private companion object {
         const val TAG = "DailyScheduler"
         const val REQ_DAILY = 20
         const val REQ_EXPIRY = 21
+        const val REQ_TEST = 22
+        const val REQ_TEST_EXPIRY = 23
 
         /** Never arm an alarm for the instant we are already at. */
         const val LEAD_MS = 60_000L

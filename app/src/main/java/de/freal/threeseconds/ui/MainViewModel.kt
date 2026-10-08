@@ -9,6 +9,7 @@ import com.meta.wearable.dat.core.types.RegistrationState
 import de.freal.threeseconds.container
 import de.freal.threeseconds.data.AppSettings
 import de.freal.threeseconds.data.Attempt
+import de.freal.threeseconds.data.AttemptKind
 import de.freal.threeseconds.data.Clip
 import de.freal.threeseconds.data.DayFacts
 import de.freal.threeseconds.data.DayLog
@@ -121,7 +122,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 today = appToday(),
                 log = container.database.days().forDay(date.key()),
                 clips = container.database.clips().forDay(date.key()),
-                attempts = container.database.attempts().between(from, to),
+                // Test prompts never count towards a day, so they don't explain one either.
+                attempts = container.database.attempts().between(from, to).filter { it.kind != AttemptKind.TEST },
                 trackingSince = installDay,
                 promptsEnabled = settings.enabled,
                 nextPromptAt = settings.scheduledAtMillis.takeIf { it > System.currentTimeMillis() },
@@ -154,6 +156,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun recordNow() = RecordingService.start(getApplication())
+
+    /** Arms a test prompt and returns when it is due. */
+    fun sendTestPrompt(): Long {
+        val at = System.currentTimeMillis() + TEST_PROMPT_DELAY_MS
+        container.scheduler.armTestPrompt(at)
+        return at
+    }
 
     fun setEnabled(value: Boolean) = viewModelScope.launch {
         container.settings.setEnabled(value)
@@ -199,4 +208,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun dismissMontage() { _montage.value = MontageState.Idle }
+
+    private companion object {
+        /** Long enough to lock the phone and put it away, to see the prompt arrive as it would. */
+        const val TEST_PROMPT_DELAY_MS = 5_000L
+    }
 }

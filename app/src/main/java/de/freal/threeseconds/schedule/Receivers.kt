@@ -50,6 +50,15 @@ class DailyTriggerReceiver : BroadcastReceiver() {
         when (intent.action) {
             ACTION_FIRE -> goAsyncScope { attempt(app) }
             ACTION_PROMPT_EXPIRED -> goAsyncScope { expire(app) }
+            ACTION_TEST_FIRE -> goAsyncScope {
+                val armedFor = intent.getLongExtra(EXTRA_ARMED_FOR, System.currentTimeMillis())
+                // No glasses check and no day bookkeeping: just the prompt, as it would land.
+                prompt(app, app.container, app.container.attempts.testFired(armedFor), test = true)
+            }
+            ACTION_TEST_EXPIRED -> goAsyncScope {
+                Notifications.cancel(app, Notifications.ID_PROMPT)
+                app.container.attempts.respondToOpenPrompt("Countdown ran out (test, day untouched)")
+            }
         }
     }
 
@@ -96,17 +105,26 @@ class DailyTriggerReceiver : BroadcastReceiver() {
         prompt(app, container, id)
     }
 
-    private suspend fun prompt(app: Context, container: de.freal.threeseconds.AppContainer, id: Long) {
+    private suspend fun prompt(
+        app: Context,
+        container: de.freal.threeseconds.AppContainer,
+        id: Long,
+        test: Boolean = false,
+    ) {
         val settings = container.settings.current()
         val streak = computeStreak(container.database.days().recent(400)).current
         val deadline = System.currentTimeMillis() + AppSettings.COUNTDOWN_MS
 
-        container.settings.setPromptedDay(appToday().key())
-        container.scheduler.armPromptExpiry(deadline)
+        if (test) {
+            container.scheduler.armTestExpiry(deadline)
+        } else {
+            container.settings.setPromptedDay(appToday().key())
+            container.scheduler.armPromptExpiry(deadline)
+        }
         Notifications.notify(
             app,
             Notifications.ID_PROMPT,
-            Notifications.buildPrompt(app, settings.snoozeCount, streak, deadline),
+            Notifications.buildPrompt(app, settings.snoozeCount, streak, deadline, test),
         )
         Log.i(TAG, "Prompt posted with a ${AppSettings.COUNTDOWN_MS / 1000}s countdown")
 
@@ -165,6 +183,9 @@ class DailyTriggerReceiver : BroadcastReceiver() {
     companion object {
         const val ACTION_FIRE = "de.freal.threeseconds.action.DAILY_FIRE"
         const val ACTION_PROMPT_EXPIRED = "de.freal.threeseconds.action.PROMPT_EXPIRED"
+        const val ACTION_TEST_FIRE = "de.freal.threeseconds.action.TEST_FIRE"
+        const val ACTION_TEST_EXPIRED = "de.freal.threeseconds.action.TEST_EXPIRED"
+        const val EXTRA_ARMED_FOR = "armed_for"
         private const val TAG = "DailyTrigger"
     }
 }

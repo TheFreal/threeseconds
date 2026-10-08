@@ -26,15 +26,26 @@ class PromptActionReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val app = context.applicationContext
         Notifications.cancel(app, Notifications.ID_PROMPT)
+        val test = intent.getBooleanExtra(EXTRA_TEST, false)
 
         when (intent.action) {
             ACTION_RECORD -> {
-                // The countdown is answered; stop it from closing the day behind us.
-                app.container.scheduler.cancelPromptExpiry()
+                // The countdown is answered; stop it from closing the day behind us. A test
+                // prompt records for real: testing the recording is the point.
+                if (test) app.container.scheduler.cancelTestExpiry() else app.container.scheduler.cancelPromptExpiry()
                 RecordingService.start(app, fromPrompt = true)
             }
 
-            ACTION_SNOOZE -> goAsyncScope {
+            // A test snooze leaves the budget, the day and the real schedule alone and just
+            // sends the test prompt again.
+            ACTION_SNOOZE -> if (test) goAsyncScope {
+                val container = app.container
+                container.scheduler.cancelTestExpiry()
+                container.attempts.respondToOpenPrompt(
+                    AttemptText.SNOOZED_PREFIX + "${AppSettings.SNOOZE_MINUTES}m (test, nothing else changed)"
+                )
+                container.scheduler.armTestPrompt(System.currentTimeMillis() + AppSettings.SNOOZE_MINUTES * 60_000L)
+            } else goAsyncScope {
                 val container = app.container
                 val current = container.settings.current()
                 val used = current.snoozeCount + 1
@@ -72,6 +83,7 @@ class PromptActionReceiver : BroadcastReceiver() {
     companion object {
         const val ACTION_RECORD = "de.freal.threeseconds.action.RECORD"
         const val ACTION_SNOOZE = "de.freal.threeseconds.action.SNOOZE"
+        const val EXTRA_TEST = "test"
         private const val TAG = "PromptAction"
     }
 }

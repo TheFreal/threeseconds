@@ -85,19 +85,21 @@ object Notifications {
         snoozeCount: Int,
         streak: Int,
         deadlineAtMillis: Long = System.currentTimeMillis() + AppSettings.COUNTDOWN_MS,
+        /** A test prompt from the debug screen: same notification, actions marked as a test. */
+        test: Boolean = false,
     ): Notification {
         val record = NotificationCompat.Action.Builder(
             R.drawable.ic_notification,
             "Record 3s",
-            broadcast(context, PromptActionReceiver.ACTION_RECORD, REQ_RECORD),
+            broadcast(context, PromptActionReceiver.ACTION_RECORD, if (test) REQ_TEST_RECORD else REQ_RECORD, test),
         ).build()
 
-        val snoozesLeft = AppSettings.MAX_SNOOZES - snoozeCount
+        val snoozesLeft = if (test) AppSettings.MAX_SNOOZES else AppSettings.MAX_SNOOZES - snoozeCount
         val snooze = if (snoozesLeft > 0) {
             NotificationCompat.Action.Builder(
                 R.drawable.ic_notification,
                 "Snooze ${AppSettings.SNOOZE_MINUTES}m",
-                broadcast(context, PromptActionReceiver.ACTION_SNOOZE, REQ_SNOOZE),
+                broadcast(context, PromptActionReceiver.ACTION_SNOOZE, if (test) REQ_TEST_SNOOZE else REQ_SNOOZE, test),
             ).build()
         } else {
             null
@@ -112,6 +114,7 @@ object Notifications {
         )
 
         val text = buildString {
+            if (test) append("Test prompt. ")
             append("Three seconds of right now.")
             if (streak > 0) append("  $streak day streak.")
             if (snoozesLeft in 1 until AppSettings.MAX_SNOOZES) {
@@ -215,11 +218,14 @@ object Notifications {
         NotificationManagerCompat.from(context).cancel(id)
     }
 
-    private fun broadcast(context: Context, action: String, requestCode: Int): PendingIntent =
+    /** Test and real actions need different request codes: PendingIntents ignore extras when matching. */
+    private fun broadcast(context: Context, action: String, requestCode: Int, test: Boolean): PendingIntent =
         PendingIntent.getBroadcast(
             context,
             requestCode,
-            Intent(context, PromptActionReceiver::class.java).setAction(action),
+            Intent(context, PromptActionReceiver::class.java)
+                .setAction(action)
+                .putExtra(PromptActionReceiver.EXTRA_TEST, test),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
@@ -228,5 +234,7 @@ object Notifications {
     private const val REQ_RECORD = 10
     private const val REQ_SNOOZE = 11
     private const val REQ_OPEN = 12
+    private const val REQ_TEST_RECORD = 13
+    private const val REQ_TEST_SNOOZE = 14
     private const val RESULT_TIMEOUT_MS = 30_000L
 }

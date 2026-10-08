@@ -50,6 +50,9 @@ enum class AttemptKind(val label: String) {
 
     /** Not an alarm: Record tapped in the app. Logged so its timings show up too. */
     MANUAL("From the app"),
+
+    /** A test prompt from the debug screen. Never touches the day or its schedule. */
+    TEST("Test"),
 }
 
 enum class AttemptOutcome(val label: String) {
