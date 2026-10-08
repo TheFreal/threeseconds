@@ -14,6 +14,10 @@ import de.freal.threeseconds.data.DayFacts
 import de.freal.threeseconds.data.DayLog
 import de.freal.threeseconds.data.DayStory
 import de.freal.threeseconds.data.StreakInfo
+import de.freal.threeseconds.data.DAY_END_MINUTE
+import de.freal.threeseconds.data.DAY_START_MINUTE
+import de.freal.threeseconds.data.appToday
+import de.freal.threeseconds.data.atMinute
 import de.freal.threeseconds.data.computeStreak
 import de.freal.threeseconds.data.describeDay
 import de.freal.threeseconds.data.key
@@ -108,13 +112,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     /** Gathers what is known about [date] and puts it into words for the calendar. */
     suspend fun storyFor(date: LocalDate): DayStory {
         val zone = ZoneId.systemDefault()
-        val from = date.atStartOfDay(zone).toInstant().toEpochMilli()
-        val to = date.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli()
+        val from = date.atMinute(DAY_START_MINUTE, zone)
+        val to = date.atMinute(DAY_END_MINUTE, zone)
         val settings = container.settings.current()
         return describeDay(
             DayFacts(
                 date = date,
-                today = LocalDate.now(),
+                today = appToday(),
                 log = container.database.days().forDay(date.key()),
                 clips = container.database.clips().forDay(date.key()),
                 attempts = container.database.attempts().between(from, to),

@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import de.freal.threeseconds.data.DayMark
 import de.freal.threeseconds.data.DayStory
 import de.freal.threeseconds.data.StreakEffect
+import de.freal.threeseconds.data.appToday
 import de.freal.threeseconds.data.dayMark
 import de.freal.threeseconds.data.inStreak
 import de.freal.threeseconds.data.key
@@ -62,7 +63,7 @@ private val MISSED_RED = Color(0xFFE57373)
  */
 @Composable
 fun StreakCalendarCard(state: HomeState, firstMonth: YearMonth, onDayClick: (LocalDate) -> Unit) {
-    val today = LocalDate.now()
+    val today = appToday()
     val thisMonth = YearMonth.from(today)
     var month by rememberSaveable { mutableStateOf(thisMonth) }
 

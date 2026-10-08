@@ -62,6 +62,9 @@ import coil.decode.VideoFrameDecoder
 import coil.request.ImageRequest
 import de.freal.threeseconds.data.AppSettings
 import de.freal.threeseconds.data.Clip
+import de.freal.threeseconds.data.DAY_END_MINUTE
+import de.freal.threeseconds.data.DAY_START_MINUTE
+import de.freal.threeseconds.data.appToday
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.YearMonth
@@ -140,7 +143,7 @@ private fun TodayScreen(
         viewModel.installDay,
         state.dayLogs.keys.minOrNull()?.let(LocalDate::parse),
         state.clipsByDay.keys.minOrNull()?.let(LocalDate::parse),
-        LocalDate.now(),
+        appToday(),
     ).min().let(YearMonth::from)
 
     Column(
@@ -422,8 +425,9 @@ private fun SettingsScreen(settings: AppSettings, viewModel: MainViewModel) {
 }
 
 /**
- * One slider with two thumbs, in whole hours. The window is only saved when a thumb is
- * let go: every save re-arms the day's prompt, which should not happen on each drag tick.
+ * One slider with two thumbs, in whole hours from 05:00 to 05:00 the next morning, the
+ * span of a 3S day. The window is only saved when a thumb is let go: every save re-arms
+ * the day's prompt, which should not happen on each drag tick.
  */
 @Composable
 private fun WindowSlider(settings: AppSettings, viewModel: MainViewModel) {
@@ -432,7 +436,7 @@ private fun WindowSlider(settings: AppSettings, viewModel: MainViewModel) {
     val range = dragging ?: saved
 
     Text(
-        "${minuteLabel(range.start.roundToInt() * 60)} to ${minuteLabel(range.endInclusive.roundToInt() * 60)}",
+        "${windowLabel(range.start.roundToInt() * 60)} to ${windowLabel(range.endInclusive.roundToInt() * 60)}",
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
@@ -441,14 +445,20 @@ private fun WindowSlider(settings: AppSettings, viewModel: MainViewModel) {
         onValueChange = { dragging = it },
         onValueChangeFinished = {
             dragging?.let {
-                val start = it.start.roundToInt()
-                val end = it.endInclusive.roundToInt().coerceAtLeast(start + 1)
+                // At least an hour long; with both thumbs at one end, the window gives way inwards.
+                val end = it.endInclusive.roundToInt().coerceAtLeast(DAY_START_MINUTE / 60 + 1)
+                val start = it.start.roundToInt().coerceAtMost(end - 1)
                 viewModel.setWindow(start * 60, end * 60)
             }
             dragging = null
         },
-        valueRange = 0f..24f,
+        valueRange = DAY_START_MINUTE / 60f..DAY_END_MINUTE / 60f,
         steps = 23,
+    )
+    Text(
+        "The day ends at 05:00, so the window can run past midnight.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
 }
 
@@ -469,9 +479,11 @@ private fun EmptyState(title: String, body: String) {
     }
 }
 
-private fun minuteLabel(minuteOfDay: Int): String =
-    if (minuteOfDay >= 24 * 60) "24:00"
-    else LocalTime.of(minuteOfDay / 60, minuteOfDay % 60).format(DateTimeFormatter.ofPattern("HH:mm"))
+/** Minutes past 24:00 are the next morning. */
+private fun windowLabel(minute: Int): String {
+    val time = LocalTime.of(minute / 60 % 24, minute % 60).format(DateTimeFormatter.ofPattern("HH:mm"))
+    return if (minute >= 24 * 60) "$time next day" else time
+}
 
 private fun prettyMonth(month: String): String =
     runCatching { YearMonth.parse(month).format(DateTimeFormatter.ofPattern("MMMM yyyy")) }

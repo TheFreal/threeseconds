@@ -15,7 +15,7 @@ data class StreakInfo(
  * Today not yet being recorded does not break the streak -- the day is still in
  * progress -- so the walk starts at yesterday when today is empty.
  */
-fun computeStreak(logs: List<DayLog>, today: LocalDate = LocalDate.now()): StreakInfo {
+fun computeStreak(logs: List<DayLog>, today: LocalDate = appToday()): StreakInfo {
     val byDay = logs.associateBy { it.day }
     val recordedToday = byDay[today.key()]?.status == DayStatus.RECORDED
 

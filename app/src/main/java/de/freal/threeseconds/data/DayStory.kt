@@ -202,7 +202,7 @@ private fun openToday(f: DayFacts, notWorn: List<Attempt>, clock: (Long) -> Stri
     val next = f.nextPromptAt
     val body = when {
         !f.promptsEnabled -> "Daily prompts are switched off in Settings."
-        next != null && Instant.ofEpochMilli(next).atZone(f.zone).toLocalDate() == f.today ->
+        next != null && appDayOf(next, f.zone) == f.today ->
             "The next check is at ${clock(next)}. If your glasses are on then, your watch will buzz.$checked"
         else -> "There are no more checks planned for today.$checked"
     }

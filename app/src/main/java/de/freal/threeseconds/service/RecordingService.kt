@@ -13,6 +13,8 @@ import de.freal.threeseconds.data.Clip
 import de.freal.threeseconds.data.DayLog
 import de.freal.threeseconds.data.DayStatus
 import de.freal.threeseconds.data.computeStreak
+import de.freal.threeseconds.data.appDayOf
+import de.freal.threeseconds.data.appToday
 import de.freal.threeseconds.data.key
 import de.freal.threeseconds.glasses.ClipRecorder
 import de.freal.threeseconds.glasses.RecordResult
@@ -24,7 +26,6 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import java.io.File
-import java.time.LocalDate
 import java.util.UUID
 
 /**
@@ -103,7 +104,7 @@ class RecordingService : Service() {
                 )
                 temp.delete()
 
-                val day = LocalDate.now().key()
+                val day = appDayOf(recordedAt).key()
                 container.database.clips().insert(
                     Clip(
                         id = UUID.randomUUID().toString(),
@@ -144,7 +145,7 @@ class RecordingService : Service() {
     private suspend fun finishWithFailure(reason: String, attemptId: Long?) {
         val container = applicationContext.container
         attemptId?.let { container.attempts.respond(it, AttemptText.CAPTURE_FAILED_PREFIX + reason) }
-        val day = LocalDate.now().key()
+        val day = appToday().key()
 
         val existing = container.database.days().forDay(day)
         if (existing?.status != DayStatus.RECORDED) {

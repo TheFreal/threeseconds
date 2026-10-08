@@ -16,7 +16,10 @@ private val Context.dataStore by preferencesDataStore(name = "three_seconds")
 /** User-facing preferences plus the per-day scheduling state. */
 data class AppSettings(
     val enabled: Boolean = true,
-    /** Minutes from local midnight bounding the window the prompt may fire in. */
+    /**
+     * Minutes from the day's midnight bounding the window the prompt may fire in, between
+     * [DAY_START_MINUTE] and [DAY_END_MINUTE]: values past 24:00 are after midnight.
+     */
     val windowStartMinute: Int = 9 * 60,
     val windowEndMinute: Int = 21 * 60,
     val clipDurationMs: Long = 3_000L,
@@ -63,10 +66,13 @@ data class AppSettings(
 class SettingsRepository(private val context: Context) {
 
     val settings: Flow<AppSettings> = context.dataStore.data.map { p ->
+        // Clamped into the 05:00-to-05:00 day; windows saved before it existed could
+        // start earlier.
+        val windowStart = (p[KEY_WINDOW_START] ?: (9 * 60)).coerceIn(DAY_START_MINUTE, DAY_END_MINUTE - 1)
         AppSettings(
             enabled = p[KEY_ENABLED] ?: true,
-            windowStartMinute = p[KEY_WINDOW_START] ?: (9 * 60),
-            windowEndMinute = p[KEY_WINDOW_END] ?: (21 * 60),
+            windowStartMinute = windowStart,
+            windowEndMinute = (p[KEY_WINDOW_END] ?: (21 * 60)).coerceIn(windowStart + 1, DAY_END_MINUTE),
             clipDurationMs = p[KEY_DURATION] ?: 3_000L,
             firstAttemptSpreadMinutes = p[KEY_FIRST_SPREAD] ?: 120,
             retryStepMinutes = p[KEY_RETRY_STEP] ?: 60,

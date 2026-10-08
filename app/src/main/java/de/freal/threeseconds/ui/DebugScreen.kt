@@ -32,10 +32,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import de.freal.threeseconds.data.AppSettings
 import de.freal.threeseconds.data.Attempt
 import de.freal.threeseconds.data.AttemptOutcome
+import de.freal.threeseconds.data.appToday
 import de.freal.threeseconds.data.key
 import kotlinx.coroutines.delay
 import java.time.Instant
-import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
@@ -112,7 +112,7 @@ private fun NextCard(settings: AppSettings, next: Attempt?, now: Long) {
                     }
                     val kind = next?.takeIf { it.scheduledAt == at }?.kind?.label
                     Muted(kind ?: "Armed before attempt logging existed")
-                    if (settings.scheduledDay == LocalDate.now().key()) {
+                    if (settings.scheduledDay == appToday().key()) {
                         Muted(
                             "Today: attempt ${settings.attemptCount + 1}, " +
                                 "snoozes used ${settings.snoozeCount}/${AppSettings.MAX_SNOOZES}"

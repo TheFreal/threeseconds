@@ -9,6 +9,8 @@ import android.util.Log
 import de.freal.threeseconds.data.AppSettings
 import de.freal.threeseconds.data.AttemptKind
 import de.freal.threeseconds.data.SettingsRepository
+import de.freal.threeseconds.data.appToday
+import de.freal.threeseconds.data.atMinute
 import de.freal.threeseconds.data.key
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -52,7 +54,7 @@ class DailyScheduler(
             return
         }
 
-        val target = pickMoment(current, LocalDate.now(), skipToday) ?: return
+        val target = pickMoment(current, appToday(), skipToday) ?: return
         settings.setSchedule(target.day, target.atMillis)
         arm(target.atMillis)
         attemptLog.scheduled(AttemptKind.FIRST, target.atMillis)
@@ -114,13 +116,9 @@ class DailyScheduler(
         return if (lo < hi) randomBetween(lo, hi) else null
     }
 
-    private fun windowStartMs(current: AppSettings, day: LocalDate): Long =
-        day.atStartOfDay(ZoneId.systemDefault())
-            .plusMinutes(current.windowStartMinute.toLong()).toInstant().toEpochMilli()
+    private fun windowStartMs(current: AppSettings, day: LocalDate): Long = day.atMinute(current.windowStartMinute)
 
-    private fun windowEndMs(current: AppSettings, day: LocalDate): Long =
-        day.atStartOfDay(ZoneId.systemDefault())
-            .plusMinutes(current.windowEndMinute.toLong()).toInstant().toEpochMilli()
+    private fun windowEndMs(current: AppSettings, day: LocalDate): Long = day.atMinute(current.windowEndMinute)
 
     /** Clamped so a window shorter than the configured spread still behaves. */
     private fun spreadMs(current: AppSettings, day: LocalDate): Long {
@@ -150,7 +148,7 @@ class DailyScheduler(
 
         // Anchored on the attempt that just failed, so each re-roll steps forward by at
         // most one configured step rather than subdividing whatever is left of the day.
-        val next = nextMomentToday(current, LocalDate.now(), current.scheduledAtMillis)
+        val next = nextMomentToday(current, appToday(), current.scheduledAtMillis)
             ?: return false
         settings.setAttemptCount(attempts)
         settings.setNextAt(next)

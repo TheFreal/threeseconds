@@ -9,10 +9,10 @@ import de.freal.threeseconds.data.AppSettings
 import de.freal.threeseconds.data.AttemptText
 import de.freal.threeseconds.data.DayLog
 import de.freal.threeseconds.data.DayStatus
+import de.freal.threeseconds.data.appToday
 import de.freal.threeseconds.data.key
 import de.freal.threeseconds.schedule.goAsyncScope
 import de.freal.threeseconds.service.RecordingService
-import java.time.LocalDate
 
 /**
  * Handles the two buttons on the daily prompt.
@@ -54,7 +54,7 @@ class PromptActionReceiver : BroadcastReceiver() {
                 container.settings.setSnoozeCount(used)
                 container.database.days().upsert(
                     DayLog(
-                        day = LocalDate.now().key(),
+                        day = appToday().key(),
                         status = DayStatus.SNOOZED,
                         updatedAt = System.currentTimeMillis(),
                     )

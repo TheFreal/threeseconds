@@ -3,6 +3,12 @@ package de.freal.threeseconds
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import de.freal.threeseconds.data.AppSettings
+import de.freal.threeseconds.data.DAY_END_MINUTE
+import de.freal.threeseconds.data.DAY_START_MINUTE
+import de.freal.threeseconds.data.appToday
+import de.freal.threeseconds.data.atMinute
+import java.time.LocalDate
+import java.time.LocalTime
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -10,9 +16,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
-import java.time.LocalDate
-import java.time.LocalTime
-import java.time.ZoneId
 
 /**
  * The attempt cadence is the heart of the trigger, so it gets pinned down here: the
@@ -25,18 +28,15 @@ class SchedulerTest {
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
     private val container by lazy { context.container }
 
-    /** Minutes from midnight for "a minute from now", so the window opens in the future. */
-    private val nowMinute: Int get() = LocalTime.now().toSecondOfDay() / 60
+    /** Minutes from the 3S day's midnight for now; past 24:00 before 05:00. */
+    private val nowMinute: Int get() = LocalTime.now().toSecondOfDay() / 60 + if (appToday() != LocalDate.now()) 24 * 60 else 0
 
-    private fun midnightMs(): Long =
-        LocalDate.now().atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
-
-    private fun minuteToMs(minute: Int): Long = midnightMs() + minute * 60_000L
+    private fun minuteToMs(minute: Int): Long = appToday().atMinute(minute)
 
     /** A window that starts shortly from now and leaves plenty of room, whenever the suite runs. */
     private fun openWindow(lengthMinutes: Int = 600): Pair<Int, Int> {
-        val start = (nowMinute + 1).coerceAtMost(24 * 60 - 2)
-        val end = (start + lengthMinutes).coerceAtMost(24 * 60 - 1)
+        val start = (nowMinute + 1).coerceAtMost(DAY_END_MINUTE - 61)
+        val end = (start + lengthMinutes).coerceAtMost(DAY_END_MINUTE)
         return start to end
     }
 
@@ -116,8 +116,8 @@ class SchedulerTest {
     @Test
     fun rerollStopsWhenTheWindowCloses() = runBlocking {
         // A window with only a couple of minutes left has no room for another attempt.
-        val start = (nowMinute - 30).coerceAtLeast(0)
-        val end = (nowMinute + 1).coerceAtMost(24 * 60 - 1)
+        val start = (nowMinute - 30).coerceAtLeast(DAY_START_MINUTE)
+        val end = (nowMinute + 1).coerceAtMost(DAY_END_MINUTE)
         container.settings.setWindow(start, end)
         container.settings.setAttemptCount(0)
 
@@ -166,8 +166,8 @@ class SchedulerTest {
     @Test
     fun cadenceFollowsTheWindowRatherThanFixedClockHours() = runBlocking {
         // Changing the window must change where attempts land, with nothing hardcoded.
-        val start = (nowMinute + 1).coerceAtMost(24 * 60 - 2)
-        val shortEnd = (start + 90).coerceAtMost(24 * 60 - 1)
+        val start = (nowMinute + 1).coerceAtMost(DAY_END_MINUTE - 61)
+        val shortEnd = (start + 90).coerceAtMost(DAY_END_MINUTE)
         container.settings.setWindow(start, shortEnd)
         container.scheduler.ensureScheduled(force = true)
 

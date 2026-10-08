@@ -135,6 +135,7 @@ otherwise the prompt will stay on the phone.
 
 | Thing | Rule |
 |---|---|
+| A day | Runs **05:00 to 05:00**, so the window can stretch past midnight and a 1am clip counts for the evening before |
 | First attempt | A random instant in the **first 2 hours** of your window |
 | Each re-roll | A random instant within the **next 60 minutes**, repeating until the window closes |
 | At each attempt | Checks whether the glasses are being worn (`DonState.DONNED`) — a single read, nothing resident in between |

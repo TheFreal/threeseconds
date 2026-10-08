@@ -3,7 +3,10 @@ package de.freal.threeseconds.data
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 import androidx.room.TypeConverter
+import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.ZoneId
 
 /** A single recorded clip, stored as a row pointing at the MediaStore entry. */
 @Entity(tableName = "clips")
@@ -80,3 +83,22 @@ class Converters {
 }
 
 fun LocalDate.key(): String = toString()
+
+/**
+ * 3S days run from 05:00 to 05:00 rather than midnight to midnight, so the window can
+ * stretch past midnight and a prompt or clip at 1am still counts for the evening before.
+ */
+const val DAY_START_MINUTE = 5 * 60
+const val DAY_END_MINUTE = DAY_START_MINUTE + 24 * 60
+
+/** The 3S day [time] belongs to. Wall-clock arithmetic, so DST nights don't shift it. */
+fun appDayOf(time: LocalDateTime): LocalDate = time.minusMinutes(DAY_START_MINUTE.toLong()).toLocalDate()
+
+fun appDayOf(millis: Long, zone: ZoneId = ZoneId.systemDefault()): LocalDate =
+    appDayOf(LocalDateTime.ofInstant(Instant.ofEpochMilli(millis), zone))
+
+fun appToday(zone: ZoneId = ZoneId.systemDefault()): LocalDate = appDayOf(LocalDateTime.now(zone))
+
+/** The instant [minute] minutes of wall-clock time after this date's midnight; may run into the next date. */
+fun LocalDate.atMinute(minute: Int, zone: ZoneId = ZoneId.systemDefault()): Long =
+    atStartOfDay().plusMinutes(minute.toLong()).atZone(zone).toInstant().toEpochMilli()

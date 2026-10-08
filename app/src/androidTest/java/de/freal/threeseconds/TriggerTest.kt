@@ -5,6 +5,8 @@ import android.content.Intent
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.meta.wearable.dat.mockdevice.MockDeviceKit
+import de.freal.threeseconds.data.DAY_END_MINUTE
+import de.freal.threeseconds.data.DAY_START_MINUTE
 import de.freal.threeseconds.notify.Notifications
 import de.freal.threeseconds.schedule.DailyTriggerReceiver
 import kotlinx.coroutines.delay
@@ -33,7 +35,7 @@ class TriggerTest {
         // No glasses at all: the sample must come back "not worn".
         MockDeviceKit.getInstance(context).disable()
         container.settings.setEnabled(true)
-        container.settings.setWindow(0, 24 * 60 - 1)
+        container.settings.setWindow(DAY_START_MINUTE, DAY_END_MINUTE)
         container.scheduler.ensureScheduled(force = true)
         Notifications.cancel(context, Notifications.ID_PROMPT)
     }

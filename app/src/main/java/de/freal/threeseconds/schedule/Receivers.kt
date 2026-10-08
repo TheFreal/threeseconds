@@ -11,6 +11,7 @@ import de.freal.threeseconds.data.AttemptText
 import de.freal.threeseconds.data.DayLog
 import de.freal.threeseconds.data.DayStatus
 import de.freal.threeseconds.data.computeStreak
+import de.freal.threeseconds.data.appToday
 import de.freal.threeseconds.data.key
 import de.freal.threeseconds.glasses.GlassesManager
 import de.freal.threeseconds.notify.Notifications
@@ -18,7 +19,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
-import java.time.LocalDate
 
 /** Runs [block] off the main thread while holding the broadcast alive. */
 internal fun BroadcastReceiver.goAsyncScope(block: suspend CoroutineScope.() -> Unit) {
@@ -72,7 +72,7 @@ class DailyTriggerReceiver : BroadcastReceiver() {
             return
         }
 
-        val today = LocalDate.now().key()
+        val today = appToday().key()
         if (container.database.days().forDay(today)?.status == DayStatus.RECORDED) {
             Log.i(TAG, "Already recorded today; arming tomorrow")
             log.resolve(id, AttemptOutcome.ALREADY_RECORDED, "Today already has a clip")
@@ -101,7 +101,7 @@ class DailyTriggerReceiver : BroadcastReceiver() {
         val streak = computeStreak(container.database.days().recent(400)).current
         val deadline = System.currentTimeMillis() + AppSettings.COUNTDOWN_MS
 
-        container.settings.setPromptedDay(LocalDate.now().key())
+        container.settings.setPromptedDay(appToday().key())
         container.scheduler.armPromptExpiry(deadline)
         Notifications.notify(
             app,
@@ -126,7 +126,7 @@ class DailyTriggerReceiver : BroadcastReceiver() {
      * day is logged as NOT_WORN and the streak carries.
      */
     private suspend fun closeUnpromptedDay(container: de.freal.threeseconds.AppContainer) {
-        val today = LocalDate.now().key()
+        val today = appToday().key()
         val promptedToday = container.settings.current().promptedDay == today
         val existing = container.database.days().forDay(today)
 
@@ -148,7 +148,7 @@ class DailyTriggerReceiver : BroadcastReceiver() {
         val container = app.container
         Notifications.cancel(app, Notifications.ID_PROMPT)
 
-        val today = LocalDate.now().key()
+        val today = appToday().key()
         if (container.database.days().forDay(today)?.status == DayStatus.RECORDED) {
             container.attempts.respondToOpenPrompt("Countdown ran out; today was already recorded")
             return
