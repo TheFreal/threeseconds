@@ -47,7 +47,7 @@ class Mp4FrameWriter(
     var height = 0
         private set
 
-    /** Duration actually captured, derived from frame timestamps. */
+    /** Duration actually captured from the first keyframe on, derived from frame timestamps. */
     val durationMs: Long
         get() = if (firstPtsUs < 0) 0 else (lastPtsUs - firstPtsUs) / 1000
 
@@ -75,7 +75,15 @@ class Mp4FrameWriter(
             height = frame.height
         }
         val pts = frame.presentationTimeUs
-        if (firstPtsUs < 0) firstPtsUs = pts
+        // The clip starts at the first keyframe -- [finish] drops everything before it --
+        // so the clock does too. Otherwise a late first keyframe came out of a short clip.
+        if (firstPtsUs < 0) {
+            if (!HevcNal.isKeyFrame(bytes)) {
+                captured += Captured(bytes, pts, isConfig = false)
+                return
+            }
+            firstPtsUs = pts
+        }
         lastPtsUs = maxOf(lastPtsUs, pts)
         captured += Captured(bytes, pts, isConfig = false)
     }
