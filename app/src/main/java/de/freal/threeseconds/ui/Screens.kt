@@ -37,6 +37,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.RangeSlider
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
@@ -62,6 +66,7 @@ import java.time.LocalDate
 import java.time.LocalTime
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
+import kotlin.math.roundToInt
 
 private enum class Tab(val label: String) {
     Today("Today"), Clips("Clips"), Montage("Montage"), Settings("Settings"), Debug("Debug")
@@ -214,6 +219,7 @@ private fun GlassesCard(
     onConnectGlasses: () -> Unit,
     onGrantCamera: () -> Unit,
 ) {
+    // Only shown while setup is unfinished; afterwards the headline carries the state.
     Card(
         Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
@@ -237,33 +243,8 @@ private fun GlassesCard(
                     )
                     Button(onClick = onGrantCamera) { Text("Allow camera") }
                 }
-
-                else -> {
-                    StatusRow("Connected", state.glasses.connected)
-                    StatusRow("Being worn", state.glasses.worn)
-                    state.glasses.name?.let {
-                        Text(it, style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    state.glasses.batteryLevel?.let {
-                        Text("Battery $it%", style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
             }
         }
-    }
-}
-
-@Composable
-private fun StatusRow(label: String, ok: Boolean) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(
-            Modifier.size(10.dp).clip(CircleShape)
-                .background(if (ok) Color(0xFF6BD68A) else Color(0xFF6E6E78))
-        )
-        Spacer(Modifier.size(10.dp))
-        Text(label, style = MaterialTheme.typography.bodyMedium)
     }
 }
 
@@ -404,13 +385,10 @@ private fun SettingsScreen(settings: AppSettings, viewModel: MainViewModel) {
 
         HorizontalDivider()
 
-        Text("Window", style = MaterialTheme.typography.titleMedium)
-        Text(
-            "${minuteLabel(settings.windowStartMinute)} to ${minuteLabel(settings.windowEndMinute)}",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        RangeSliders(settings, viewModel)
+        Column {
+            Text("Window", style = MaterialTheme.typography.titleMedium)
+            WindowSlider(settings, viewModel)
+        }
 
         HorizontalDivider()
 
@@ -425,11 +403,13 @@ private fun SettingsScreen(settings: AppSettings, viewModel: MainViewModel) {
         HorizontalDivider()
 
         Text("Quality", style = MaterialTheme.typography.titleMedium)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("LOW", "MEDIUM", "HIGH").forEach { q ->
-                OutlinedButton(
+        val qualities = listOf("LOW", "MEDIUM", "HIGH")
+        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+            qualities.forEachIndexed { i, q ->
+                SegmentedButton(
+                    selected = settings.videoQuality == q,
                     onClick = { viewModel.setQuality(q, settings.frameRate) },
-                    enabled = settings.videoQuality != q,
+                    shape = SegmentedButtonDefaults.itemShape(i, qualities.size),
                 ) { Text(q.lowercase().replaceFirstChar { it.uppercase() }) }
             }
         }
@@ -441,28 +421,35 @@ private fun SettingsScreen(settings: AppSettings, viewModel: MainViewModel) {
     }
 }
 
+/**
+ * One slider with two thumbs, in whole hours. The window is only saved when a thumb is
+ * let go: every save re-arms the day's prompt, which should not happen on each drag tick.
+ */
 @Composable
-private fun RangeSliders(settings: AppSettings, viewModel: MainViewModel) {
-    Column {
-        Slider(
-            value = settings.windowStartMinute / 60f,
-            onValueChange = {
-                val start = (it.toInt() * 60)
-                viewModel.setWindow(start, maxOf(settings.windowEndMinute, start + 60))
-            },
-            valueRange = 0f..23f,
-            steps = 22,
-        )
-        Slider(
-            value = settings.windowEndMinute / 60f,
-            onValueChange = {
-                val end = (it.toInt() * 60)
-                viewModel.setWindow(minOf(settings.windowStartMinute, end - 60), end)
-            },
-            valueRange = 1f..24f,
-            steps = 22,
-        )
-    }
+private fun WindowSlider(settings: AppSettings, viewModel: MainViewModel) {
+    val saved = settings.windowStartMinute / 60f..settings.windowEndMinute / 60f
+    var dragging by remember { mutableStateOf<ClosedFloatingPointRange<Float>?>(null) }
+    val range = dragging ?: saved
+
+    Text(
+        "${minuteLabel(range.start.roundToInt() * 60)} to ${minuteLabel(range.endInclusive.roundToInt() * 60)}",
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    RangeSlider(
+        value = range,
+        onValueChange = { dragging = it },
+        onValueChangeFinished = {
+            dragging?.let {
+                val start = it.start.roundToInt()
+                val end = it.endInclusive.roundToInt().coerceAtLeast(start + 1)
+                viewModel.setWindow(start * 60, end * 60)
+            }
+            dragging = null
+        },
+        valueRange = 0f..24f,
+        steps = 23,
+    )
 }
 
 @Composable
@@ -483,8 +470,8 @@ private fun EmptyState(title: String, body: String) {
 }
 
 private fun minuteLabel(minuteOfDay: Int): String =
-    LocalTime.of((minuteOfDay / 60).coerceIn(0, 23), minuteOfDay % 60)
-        .format(DateTimeFormatter.ofPattern("HH:mm"))
+    if (minuteOfDay >= 24 * 60) "24:00"
+    else LocalTime.of(minuteOfDay / 60, minuteOfDay % 60).format(DateTimeFormatter.ofPattern("HH:mm"))
 
 private fun prettyMonth(month: String): String =
     runCatching { YearMonth.parse(month).format(DateTimeFormatter.ofPattern("MMMM yyyy")) }

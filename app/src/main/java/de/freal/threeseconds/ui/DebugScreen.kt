@@ -71,7 +71,7 @@ fun DebugScreen(viewModel: MainViewModel, settings: AppSettings) {
         checks?.let { item { ChecksCard(it) } }
         item {
             Text(
-                "Last ${recent.size} attempts",
+                "Recent attempts",
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(top = 8.dp),
             )

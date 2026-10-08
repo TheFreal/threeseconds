@@ -74,12 +74,22 @@ fun ClipPlayerDialog(clips: List<Clip>, onDismiss: () -> Unit) {
                                 start()
                             } else {
                                 index = (index + 1) % clips.size
+                                error = null
                                 setVideoURI(Uri.parse(clips[index].uri))
                             }
                         }
-                        // Returning true suppresses the platform's own error dialog.
+                        // Returning true suppresses the platform's own error dialog. In a
+                        // sequence, a broken clip should not stop the others, so it shows
+                        // its error briefly and moves on.
                         setOnErrorListener { _, what, extra ->
                             error = "This clip can't be played (error $what/$extra)"
+                            if (clips.size > 1) {
+                                postDelayed({
+                                    index = (index + 1) % clips.size
+                                    error = null
+                                    setVideoURI(Uri.parse(clips[index].uri))
+                                }, 1_500)
+                            }
                             true
                         }
                         setVideoURI(Uri.parse(clips[0].uri))

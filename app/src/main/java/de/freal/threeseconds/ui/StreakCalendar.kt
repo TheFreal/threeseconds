@@ -106,7 +106,11 @@ private fun StreakHeader(state: HomeState) {
         )
         Spacer(Modifier.size(6.dp))
         Text(
-            if (state.streak.current == 1) "1 day streak" else "${state.streak.current} day streak",
+            when (state.streak.current) {
+                0 -> "No streak yet"
+                1 -> "1 day streak"
+                else -> "${state.streak.current} day streak"
+            },
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold,
             modifier = Modifier.weight(1f),
