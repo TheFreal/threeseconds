@@ -3,6 +3,7 @@ package de.freal.threeseconds.service
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.IBinder
 import android.util.Log
 import androidx.core.content.ContextCompat
@@ -105,6 +106,9 @@ class RecordingService : Service() {
                 temp.delete()
 
                 val day = appDayOf(recordedAt).key()
+                // One clip per day: a new recording replaces the day's clip, which is only
+                // removed once the new one is safely saved.
+                val replaced = container.database.clips().forDay(day)
                 container.database.clips().insert(
                     Clip(
                         id = UUID.randomUUID().toString(),
@@ -117,6 +121,10 @@ class RecordingService : Service() {
                         deviceName = result.deviceName,
                     )
                 )
+                for (old in replaced) {
+                    container.database.clips().delete(old.id)
+                    container.clipStore.delete(Uri.parse(old.uri))
+                }
                 container.database.days().upsert(
                     DayLog(day = day, status = DayStatus.RECORDED, updatedAt = recordedAt)
                 )
@@ -125,7 +133,11 @@ class RecordingService : Service() {
                 Notifications.showResult(
                     applicationContext,
                     "Got it",
-                    if (streak > 1) "$streak days in a row." else "Three seconds saved.",
+                    when {
+                        replaced.isNotEmpty() -> "Today's clip replaced."
+                        streak > 1 -> "$streak days in a row."
+                        else -> "Three seconds saved."
+                    },
                 )
                 container.scheduler.ensureScheduled(force = true, skipToday = true)
                 Log.i(TAG, "Saved ${result.frameCount} frames / ${result.durationMs}ms to $uri")

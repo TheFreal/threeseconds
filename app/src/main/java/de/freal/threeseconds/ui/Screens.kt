@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -45,6 +46,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -65,6 +67,7 @@ import de.freal.threeseconds.data.Clip
 import de.freal.threeseconds.data.DAY_END_MINUTE
 import de.freal.threeseconds.data.DAY_START_MINUTE
 import de.freal.threeseconds.data.appToday
+import de.freal.threeseconds.data.key
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.YearMonth
@@ -165,15 +168,7 @@ private fun TodayScreen(
         }
 
         if (state.isRegistered && !cameraDenied) {
-            Button(
-                onClick = viewModel::recordNow,
-                modifier = Modifier.fillMaxWidth().height(56.dp),
-                enabled = state.glasses.available,
-            ) {
-                Icon(Icons.Default.CameraAlt, contentDescription = null)
-                Spacer(Modifier.size(8.dp))
-                Text(if (state.glasses.available) "Record three seconds now" else "Glasses not connected")
-            }
+            RecordButton(state, viewModel)
         }
 
         Text(
@@ -181,6 +176,46 @@ private fun TodayScreen(
                 "and lands on your watch. Record or snooze from there.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/** Days hold one clip, so recording again once today has one replaces it, after asking. */
+@Composable
+private fun RecordButton(state: HomeState, viewModel: MainViewModel) {
+    val hasClip = state.clipsByDay[appToday().key()].orEmpty().isNotEmpty()
+    var confirming by remember { mutableStateOf(false) }
+
+    if (confirming) {
+        AlertDialog(
+            onDismissRequest = { confirming = false },
+            title = { Text("Replace today's clip?") },
+            text = {
+                Text(
+                    "Each day keeps one clip. Today's is deleted, from the gallery too, once the " +
+                        "new one is saved. If the recording fails, today's clip stays."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { confirming = false; viewModel.recordNow() }) { Text("Record and replace") }
+            },
+            dismissButton = { TextButton(onClick = { confirming = false }) { Text("Keep it") } },
+        )
+    }
+
+    Button(
+        onClick = { if (hasClip) confirming = true else viewModel.recordNow() },
+        modifier = Modifier.fillMaxWidth().height(56.dp),
+        enabled = state.glasses.available,
+    ) {
+        Icon(Icons.Default.CameraAlt, contentDescription = null)
+        Spacer(Modifier.size(8.dp))
+        Text(
+            when {
+                !state.glasses.available -> "Glasses not connected"
+                hasClip -> "Replace today's clip"
+                else -> "Record three seconds now"
+            }
         )
     }
 }

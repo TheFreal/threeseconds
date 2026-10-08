@@ -5,6 +5,7 @@ import android.content.Context
 import android.net.Uri
 import android.os.Environment
 import android.provider.MediaStore
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -81,12 +82,19 @@ class ClipStore(private val context: Context) {
         uri
     }
 
+    /**
+     * Removes a clip from the gallery. Only works for files this install created: after a
+     * reinstall Android wants the user's consent, which a background service can't ask
+     * for, so such a file stays in the gallery and only leaves the app.
+     */
     suspend fun delete(uri: Uri) = withContext(Dispatchers.IO) {
         runCatching { context.contentResolver.delete(uri, null, null) }
+            .onFailure { Log.w(TAG, "Could not delete $uri from the gallery", it) }
         Unit
     }
 
     companion object {
+        private const val TAG = "ClipStore"
         const val FOLDER_NAME = "ThreeSeconds"
         val RELATIVE_PATH: String = "${Environment.DIRECTORY_MOVIES}/$FOLDER_NAME"
         private val FILE_STAMP: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss")
