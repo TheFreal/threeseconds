@@ -122,7 +122,7 @@ fun AppScaffold(
         ) {
             when (tab) {
                 Tab.Today -> TodayScreen(state, viewModel, cameraDenied, onConnectGlasses, onGrantCamera)
-                Tab.Clips -> ClipsScreen(state.clips)
+                Tab.Clips -> ClipsScreen(state.clips, onDelete = viewModel::deleteClip)
                 Tab.Montage -> MontageScreen(viewModel)
                 Tab.Settings -> SettingsScreen(state.settings, viewModel)
                 Tab.Debug -> DebugScreen(viewModel, state.settings)
@@ -288,14 +288,14 @@ private fun GlassesCard(
 }
 
 @Composable
-private fun ClipsScreen(clips: List<Clip>) {
+private fun ClipsScreen(clips: List<Clip>, onDelete: (Clip) -> Unit) {
     if (clips.isEmpty()) {
         EmptyState("No clips yet", "Your first three seconds will show up here.")
         return
     }
 
     var playing by remember { mutableStateOf<Clip?>(null) }
-    playing?.let { ClipPlayerDialog(listOf(it), onDismiss = { playing = null }) }
+    playing?.let { ClipPlayerDialog(listOf(it), onDismiss = { playing = null }, onDelete = onDelete) }
 
     LazyVerticalGrid(
         columns = GridCells.Adaptive(110.dp),

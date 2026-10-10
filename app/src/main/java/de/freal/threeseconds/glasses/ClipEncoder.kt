@@ -177,52 +177,6 @@ internal class ClipEncoder(private val spool: FrameSpool) {
         )
     }
 
-    private class Encoder(
-        val name: String,
-        val mime: String,
-        val width: Int,
-        val height: Int,
-        val vbr: Boolean,
-        private val maxBitrate: Int,
-    ) {
-        /** About 0.4 bits per pixel: several times what the glasses send, so effectively lossless here. */
-        fun bitrate(fps: Float): Int =
-            (width.toLong() * height * fps * 0.4f).toLong().coerceIn(1_000_000L, maxBitrate.toLong()).toInt()
-    }
-
-    /**
-     * The first encoder that takes the clip's size, preferring HEVC and hardware. Sizes an
-     * encoder can't take (504 is not a multiple of 16) are cropped by a few pixels rather
-     * than scaled.
-     */
-    private fun pickEncoder(width: Int, height: Int): Encoder? {
-        val all = MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos.filter { it.isEncoder }
-        for (mime in listOf(MediaFormat.MIMETYPE_VIDEO_HEVC, MediaFormat.MIMETYPE_VIDEO_AVC)) {
-            val candidates = all.filter { info -> info.supportedTypes.any { it.equals(mime, ignoreCase = true) } }
-                .sortedByDescending { it.isHardwareAccelerated }
-            for (info in candidates) {
-                val caps = info.getCapabilitiesForType(mime)
-                val video = caps.videoCapabilities ?: continue
-                val w = width - width % video.widthAlignment
-                val h = height - height % video.heightAlignment
-                if (w <= 0 || h <= 0 || !video.isSizeSupported(w, h)) {
-                    Log.i(TAG, "${info.name} can't take ${w}x$h (widths ${video.supportedWidths}, heights ${video.supportedHeights})")
-                    continue
-                }
-                return Encoder(
-                    name = info.name,
-                    mime = mime,
-                    width = w,
-                    height = h,
-                    vbr = caps.encoderCapabilities
-                        ?.isBitrateModeSupported(MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_VBR) == true,
-                    maxBitrate = video.bitrateRange.upper,
-                )
-            }
-        }
-        return null
-    }
-
     private fun measuredFps(entries: List<FrameSpool.Entry>): Float {
         if (entries.size < 2) return 24f
         val spanUs = entries.last().ptsUs - entries.first().ptsUs
@@ -234,4 +188,61 @@ internal class ClipEncoder(private val spool: FrameSpool) {
     private companion object {
         const val TAG = "ClipEncoder"
     }
+}
+
+/** A video encoder chosen for one size; shared by clip recording and the montage. */
+internal class Encoder(
+    val name: String,
+    val mime: String,
+    val width: Int,
+    val height: Int,
+    val vbr: Boolean,
+    private val maxBitrate: Int,
+) {
+    /** About 0.4 bits per pixel: several times what the glasses send, so effectively lossless here. */
+    fun bitrate(fps: Float): Int =
+        (width.toLong() * height * fps * 0.4f).toLong().coerceIn(1_000_000L, maxBitrate.toLong()).toInt()
+
+    /** Encoder input format: flexible YUV, VBR where offered, a keyframe each second. */
+    fun format(fps: Float): MediaFormat =
+        MediaFormat.createVideoFormat(mime, width, height).apply {
+            setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Flexible)
+            setInteger(MediaFormat.KEY_BIT_RATE, bitrate(fps))
+            setInteger(MediaFormat.KEY_FRAME_RATE, fps.toInt().coerceAtLeast(1))
+            setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
+            if (vbr) setInteger(MediaFormat.KEY_BITRATE_MODE, MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_VBR)
+        }
+}
+
+/**
+ * The first encoder that takes [width]x[height], preferring HEVC and hardware. Sizes an
+ * encoder can't take (504 is not a multiple of 16) are cropped by a few pixels rather
+ * than scaled.
+ */
+internal fun pickEncoder(width: Int, height: Int): Encoder? {
+    val all = MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos.filter { it.isEncoder }
+    for (mime in listOf(MediaFormat.MIMETYPE_VIDEO_HEVC, MediaFormat.MIMETYPE_VIDEO_AVC)) {
+        val candidates = all.filter { info -> info.supportedTypes.any { it.equals(mime, ignoreCase = true) } }
+            .sortedByDescending { it.isHardwareAccelerated }
+        for (info in candidates) {
+            val caps = info.getCapabilitiesForType(mime)
+            val video = caps.videoCapabilities ?: continue
+            val w = width - width % video.widthAlignment
+            val h = height - height % video.heightAlignment
+            if (w <= 0 || h <= 0 || !video.isSizeSupported(w, h)) {
+                Log.i("Encoder", "${info.name} can't take ${w}x$h (widths ${video.supportedWidths}, heights ${video.supportedHeights})")
+                continue
+            }
+            return Encoder(
+                name = info.name,
+                mime = mime,
+                width = w,
+                height = h,
+                vbr = caps.encoderCapabilities
+                    ?.isBitrateModeSupported(MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_VBR) == true,
+                maxBitrate = video.bitrateRange.upper,
+            )
+        }
+    }
+    return null
 }

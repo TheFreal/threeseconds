@@ -13,11 +13,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.material.icons.Icons
+import androidx.compose.foundation.layout.Row
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -44,12 +48,29 @@ import java.time.format.DateTimeFormatter
  * player library.
  */
 @Composable
-fun ClipPlayerDialog(clips: List<Clip>, onDismiss: () -> Unit) {
+fun ClipPlayerDialog(clips: List<Clip>, onDismiss: () -> Unit, onDelete: (Clip) -> Unit) {
     if (clips.isEmpty()) return
     var view by remember { mutableStateOf<VideoView?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var index by remember { mutableIntStateOf(0) }
+    var confirmDelete by remember { mutableStateOf(false) }
     val clip = clips[index.coerceIn(clips.indices)]
+
+    if (confirmDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = { Text("Delete this clip?") },
+            text = { Text("It is removed from 3S and from your gallery. The day keeps its streak.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmDelete = false
+                    onDelete(clip)
+                    onDismiss()
+                }) { Text("Delete") }
+            },
+            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Keep") } },
+        )
+    }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -121,11 +142,13 @@ fun ClipPlayerDialog(clips: List<Clip>, onDismiss: () -> Unit) {
                 }
             }
 
-            IconButton(
-                onClick = onDismiss,
-                modifier = Modifier.align(Alignment.TopEnd).safeDrawingPadding(),
-            ) {
-                Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
+            Row(Modifier.align(Alignment.TopEnd).safeDrawingPadding()) {
+                IconButton(onClick = { confirmDelete = true }) {
+                    Icon(Icons.Default.Delete, contentDescription = "Delete clip", tint = Color.White)
+                }
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
+                }
             }
 
             error?.let {

@@ -2,6 +2,7 @@ package de.freal.threeseconds.ui
 
 import android.app.Application
 import android.app.usage.UsageStatsManager
+import android.net.Uri
 import android.os.PowerManager
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -156,6 +157,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun recordNow() = RecordingService.start(getApplication())
+
+    /**
+     * Removes a clip from 3S and from the gallery. The day's log stays as it is, so a
+     * recorded day keeps its streak.
+     */
+    fun deleteClip(clip: Clip) {
+        viewModelScope.launch {
+            container.database.clips().delete(clip.id)
+            container.clipStore.delete(Uri.parse(clip.uri))
+        }
+    }
 
     /** Arms a test prompt and returns when it is due. */
     fun sendTestPrompt(): Long {

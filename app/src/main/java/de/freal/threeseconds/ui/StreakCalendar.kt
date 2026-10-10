@@ -263,7 +263,7 @@ private fun LegendItem(swatch: Modifier, label: String) {
 fun DayDetail(date: LocalDate, state: HomeState, viewModel: MainViewModel, onDismiss: () -> Unit) {
     val clips = state.clipsByDay[date.key()].orEmpty()
     if (clips.isNotEmpty()) {
-        ClipPlayerDialog(clips, onDismiss)
+        ClipPlayerDialog(clips, onDismiss, onDelete = viewModel::deleteClip)
         return
     }
 
