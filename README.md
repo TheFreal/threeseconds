@@ -25,8 +25,8 @@ within the next 60 min            │   bridges to the watch
   │                  ┌────────────┼────────────┐
   └─ repeat until    │            │            │
      window closes   │            │            │
-         │     Record 3s     Snooze 5m     countdown
-         │           │        (×2 max)      expires
+         │     Record 3s     Snooze 20/10/5/1m  countdown
+         │           │        (×4 max)      expires
          ▼           ▼            │            │
      NOT_WORN  RecordingService   ▼            ▼
    streak kept  frames → encoder  +5 min     MISSED
@@ -146,7 +146,7 @@ otherwise the prompt will stay on the phone.
 | Each re-roll | A random instant within the **next 60 minutes**, repeating until the window closes |
 | At each attempt | Checks whether the glasses are being worn (`DonState.DONNED`) — a single read, nothing resident in between |
 | The ask | A notification with a live **60 second countdown**, ticking down on the watch face |
-| Snooze | A fixed **+5 minutes**, twice a day, then the button disappears. Never a new random draw, and it does not spend an attempt |
+| Snooze | Fixed and shrinking: **+20, +10, +5, then +1 minute**, four times a day, then the button disappears. Never a new random draw, and it does not spend an attempt |
 | Glasses unavailable | Never falls back to the phone camera — this is a glasses app |
 | Where clips go | `Movies/ThreeSeconds/` (visible in your gallery, survives uninstall) |
 | Montages | `Movies/ThreeSeconds/Montages/` |

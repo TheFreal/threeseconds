@@ -41,10 +41,11 @@ class PromptActionReceiver : BroadcastReceiver() {
             ACTION_SNOOZE -> if (test) goAsyncScope {
                 val container = app.container
                 container.scheduler.cancelTestExpiry()
+                val minutes = AppSettings.snoozeMinutes(0)
                 container.attempts.respondToOpenPrompt(
-                    AttemptText.SNOOZED_PREFIX + "${AppSettings.SNOOZE_MINUTES}m (test, nothing else changed)"
+                    AttemptText.SNOOZED_PREFIX + "${minutes}m (test, nothing else changed)"
                 )
-                container.scheduler.armTestPrompt(System.currentTimeMillis() + AppSettings.SNOOZE_MINUTES * 60_000L)
+                container.scheduler.armTestPrompt(System.currentTimeMillis() + minutes * 60_000L)
             } else goAsyncScope {
                 val container = app.container
                 val current = container.settings.current()
@@ -56,9 +57,9 @@ class PromptActionReceiver : BroadcastReceiver() {
                     return@goAsyncScope
                 }
 
+                val minutes = AppSettings.snoozeMinutes(current.snoozeCount)
                 container.attempts.respondToOpenPrompt(
-                    AttemptText.SNOOZED_PREFIX +
-                        "${AppSettings.SNOOZE_MINUTES}m ($used/${AppSettings.MAX_SNOOZES})"
+                    AttemptText.SNOOZED_PREFIX + "${minutes}m ($used/${AppSettings.MAX_SNOOZES})"
                 )
 
                 container.scheduler.cancelPromptExpiry()
@@ -72,8 +73,8 @@ class PromptActionReceiver : BroadcastReceiver() {
                 )
                 // A fixed push-back, not a fresh random draw: snoozing should move the
                 // prompt by a known amount rather than scatter it somewhere new.
-                container.scheduler.scheduleSnooze(AppSettings.SNOOZE_MINUTES)
-                Log.i(TAG, "Snoozed ${AppSettings.SNOOZE_MINUTES}m ($used/${AppSettings.MAX_SNOOZES})")
+                container.scheduler.scheduleSnooze(minutes)
+                Log.i(TAG, "Snoozed ${minutes}m ($used/${AppSettings.MAX_SNOOZES})")
             }
 
             else -> Unit

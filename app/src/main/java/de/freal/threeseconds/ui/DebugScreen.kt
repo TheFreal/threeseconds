@@ -107,7 +107,7 @@ private fun TestPromptCard(viewModel: MainViewModel) {
                 "Arms a real alarm. When it goes off, the prompt lands on your phone and watch " +
                     "as it would for real, without checking for your glasses. Record saves a real " +
                     "clip and replaces today's. Snoozing sends the test again in " +
-                    "${AppSettings.SNOOZE_MINUTES} minutes; neither that nor letting it run out " +
+                    "${AppSettings.snoozeMinutes(0)} minutes; neither that nor letting it run out " +
                     "touches your streak or today's prompt."
             )
             OutlinedButton(onClick = { armedFor = viewModel.sendTestPrompt() }) {

@@ -94,11 +94,13 @@ object Notifications {
             broadcast(context, PromptActionReceiver.ACTION_RECORD, if (test) REQ_TEST_RECORD else REQ_RECORD, test),
         ).build()
 
-        val snoozesLeft = if (test) AppSettings.MAX_SNOOZES else AppSettings.MAX_SNOOZES - snoozeCount
+        // A test never spends the real snooze budget, so it always offers the first snooze.
+        val snoozesUsed = if (test) 0 else snoozeCount
+        val snoozesLeft = AppSettings.MAX_SNOOZES - snoozesUsed
         val snooze = if (snoozesLeft > 0) {
             NotificationCompat.Action.Builder(
                 R.drawable.ic_notification,
-                "Snooze ${AppSettings.SNOOZE_MINUTES}m",
+                "Snooze ${AppSettings.snoozeMinutes(snoozesUsed)}m",
                 broadcast(context, PromptActionReceiver.ACTION_SNOOZE, if (test) REQ_TEST_SNOOZE else REQ_SNOOZE, test),
             ).build()
         } else {
@@ -117,8 +119,8 @@ object Notifications {
             if (test) append("Test prompt. ")
             append("Three seconds of right now.")
             if (streak > 0) append("  $streak day streak.")
-            if (snoozesLeft in 1 until AppSettings.MAX_SNOOZES) {
-                append("  $snoozesLeft snooze left.")
+            if (snoozesUsed > 0) {
+                append(if (snoozesLeft == 0) "  Last chance." else "  $snoozesLeft snoozes left.".replace("1 snoozes", "1 snooze"))
             }
         }
 

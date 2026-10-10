@@ -134,13 +134,14 @@ class SchedulerTest {
         container.scheduler.ensureScheduled(force = true)
         val before = container.settings.current()
 
-        container.scheduler.scheduleSnooze(AppSettings.SNOOZE_MINUTES)
+        val minutes = AppSettings.snoozeMinutes(0)
+        container.scheduler.scheduleSnooze(minutes)
         val after = container.settings.current()
 
         assertEquals("Snoozing is not an attempt", before.attemptCount, after.attemptCount)
-        val expected = System.currentTimeMillis() + AppSettings.SNOOZE_MINUTES * 60_000L
+        val expected = System.currentTimeMillis() + minutes * 60_000L
         assertTrue(
-            "Expected a ${AppSettings.SNOOZE_MINUTES} minute push-back, got " +
+            "Expected a $minutes minute push-back, got " +
                 "${(after.scheduledAtMillis - System.currentTimeMillis()) / 1000}s",
             kotlin.math.abs(after.scheduledAtMillis - expected) < 10_000L,
         )

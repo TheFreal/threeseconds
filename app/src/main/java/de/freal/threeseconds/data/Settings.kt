@@ -45,10 +45,17 @@ data class AppSettings(
     val maxSnoozes: Int get() = MAX_SNOOZES
 
     companion object {
-        const val MAX_SNOOZES = 2
+        /**
+         * Each snooze is a fixed push-back -- never a new random draw -- and they shrink,
+         * so the later ones close in on the end of the day instead of drifting past it.
+         */
+        val SNOOZE_STEPS_MINUTES = listOf(20L, 10L, 5L, 1L)
 
-        /** Snooze is a short, fixed push-back -- never a new random draw. */
-        const val SNOOZE_MINUTES = 5L
+        val MAX_SNOOZES = SNOOZE_STEPS_MINUTES.size
+
+        /** How long the snooze after [snoozesUsed] earlier ones lasts. */
+        fun snoozeMinutes(snoozesUsed: Int): Long =
+            SNOOZE_STEPS_MINUTES[snoozesUsed.coerceIn(0, SNOOZE_STEPS_MINUTES.lastIndex)]
 
         /** How long you have to act once the prompt lands. */
         const val COUNTDOWN_MS = 60_000L

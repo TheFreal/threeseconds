@@ -8,6 +8,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import de.freal.threeseconds.data.AppSettings
 import de.freal.threeseconds.data.DayStatus
+import de.freal.threeseconds.data.appToday
 import de.freal.threeseconds.data.key
 import de.freal.threeseconds.notify.Notifications
 import de.freal.threeseconds.notify.PromptActionReceiver
@@ -21,7 +22,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
-import java.time.LocalDate
 
 /**
  * The daily prompt is the entire watch interface, so its shape is worth asserting:
@@ -141,10 +141,12 @@ class PromptNotificationTest {
     }
 
     @Test
-    fun snoozeIsAShortFixedPushBack() {
-        // A fixed delay, not a fresh random draw, and short enough to stay urgent.
-        assertEquals(5L, AppSettings.SNOOZE_MINUTES)
-        assertEquals(2, AppSettings.MAX_SNOOZES)
+    fun snoozesAreFixedAndShrink() {
+        // Fixed delays, not fresh random draws; each shorter than the last.
+        assertEquals(listOf(20L, 10L, 5L, 1L), AppSettings.SNOOZE_STEPS_MINUTES)
+        assertEquals(4, AppSettings.MAX_SNOOZES)
+        assertEquals(20L, AppSettings.snoozeMinutes(0))
+        assertEquals(1L, AppSettings.snoozeMinutes(3))
     }
 
     @Test
@@ -191,7 +193,15 @@ class PromptNotificationTest {
         }
         assertEquals("Snooze should have been counted", 1, count)
 
-        val day = container.database.days().forDay(LocalDate.now().key())
+        // The receiver saves the count first and the day a moment later.
+        val day = withTimeoutOrNull(5_000) {
+            var found = container.database.days().forDay(appToday().key())
+            while (found == null) {
+                delay(100)
+                found = container.database.days().forDay(appToday().key())
+            }
+            found
+        }
         assertEquals(DayStatus.SNOOZED, day?.status)
 
         container.settings.setSnoozeCount(0)
