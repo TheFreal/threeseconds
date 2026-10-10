@@ -32,7 +32,10 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // R8 strips the unused bulk of the icon set, AndroidX and the glasses SDK.
+            // Names are kept (see proguard-rules.pro) so release crash logs stay readable.
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
 
             // Signed with the debug key so a release build can actually be installed on
@@ -94,7 +97,8 @@ dependencies {
 
     implementation(libs.mwdat.core)
     implementation(libs.mwdat.camera)
-    implementation(libs.mwdat.mockdevice)
+    // Simulated glasses for the device tests only; never shipped in a release build.
+    debugImplementation(libs.mwdat.mockdevice)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
